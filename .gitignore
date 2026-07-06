@@ -1,0 +1,12 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Supabase CLI temp
+supabase/.temp/
+
+# OS / editor
+.DS_Store
+Thumbs.db
