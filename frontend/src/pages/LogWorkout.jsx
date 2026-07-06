@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Check, Loader2 } from 'lucide-react'
+import { Check, Loader2, Minus, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
@@ -13,7 +13,7 @@ import {
   TRAINING_CYCLE,
 } from '../lib/schedule'
 import { DEFAULT_SCHEDULE } from '../data/routines'
-import { parseTargetSets } from '../lib/workoutUtils'
+import { getExerciseSetCount, parseTargetSets } from '../lib/workoutUtils'
 
 export default function LogWorkout() {
   const { user, settings } = useAuth()
@@ -31,6 +31,7 @@ export default function LogWorkout() {
   const [routine, setRoutine] = useState(null)
   const [session, setSession] = useState(null)
   const [sets, setSets] = useState({})
+  const [exerciseSetCounts, setExerciseSetCounts] = useState({})
   const [loading, setLoading] = useState(true)
   const [initLoading, setInitLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -88,10 +89,12 @@ export default function LogWorkout() {
     setSession(sessionData)
 
     const initial = {}
+    const counts = {}
     routineData?.routine_exercises?.forEach((ex) => {
-      const maxSets = parseTargetSets(ex.target_sets)
       const existing = (sessionData?.workout_sets ?? []).filter((s) => s.exercise_id === ex.id || s.exercise_name === ex.name)
-      for (let i = 1; i <= maxSets; i++) {
+      const setCount = getExerciseSetCount(ex.target_sets, existing)
+      counts[ex.id] = setCount
+      for (let i = 1; i <= setCount; i++) {
         const key = `${ex.id}-${i}`
         const found = existing.find((s) => s.set_number === i)
         initial[key] = {
@@ -106,11 +109,57 @@ export default function LogWorkout() {
       }
     })
     setSets(initial)
+    setExerciseSetCounts(counts)
     setLoading(false)
   }
 
   const updateSet = (key, field, value) => {
     setSets((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }))
+  }
+
+  const addSet = (ex) => {
+    const current = exerciseSetCounts[ex.id] ?? parseTargetSets(ex.target_sets)
+    const nextNum = current + 1
+    const key = `${ex.id}-${nextNum}`
+    setExerciseSetCounts((prev) => ({ ...prev, [ex.id]: nextNum }))
+    setSets((prev) => ({
+      ...prev,
+      [key]: {
+        exercise_id: ex.id,
+        exercise_name: ex.name,
+        set_number: nextNum,
+        weight_kg: '',
+        reps: '',
+        rir: '',
+      },
+    }))
+  }
+
+  const removeLastSet = async (ex) => {
+    const templateMin = parseTargetSets(ex.target_sets)
+    const current = exerciseSetCounts[ex.id] ?? templateMin
+    if (current <= 1) return
+
+    const lastKey = `${ex.id}-${current}`
+    const lastSet = sets[lastKey]
+    const lastIsEmpty = !lastSet?.weight_kg && !lastSet?.reps
+    const canRemove = current > templateMin || lastIsEmpty
+    if (!canRemove) return
+
+    if (lastSet?.id) {
+      const { error } = await supabase.from('workout_sets').delete().eq('id', lastSet.id)
+      if (error) {
+        setMessage(error.message ?? 'Failed to remove set')
+        return
+      }
+    }
+
+    setSets((prev) => {
+      const next = { ...prev }
+      delete next[lastKey]
+      return next
+    })
+    setExerciseSetCounts((prev) => ({ ...prev, [ex.id]: current - 1 }))
   }
 
   const saveWorkout = async (markComplete = false) => {
@@ -273,7 +322,13 @@ export default function LogWorkout() {
       ) : (
         <>
           {exercises.map((ex) => {
-            const maxSets = parseTargetSets(ex.target_sets)
+            const templateMin = parseTargetSets(ex.target_sets)
+            const visibleCount = exerciseSetCounts[ex.id] ?? templateMin
+            const lastKey = `${ex.id}-${visibleCount}`
+            const lastSet = sets[lastKey] ?? {}
+            const lastIsEmpty = !lastSet.weight_kg && !lastSet.reps
+            const canRemoveLast = visibleCount > 1 && (visibleCount > templateMin || lastIsEmpty)
+
             return (
               <section key={ex.id} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                 <div className="mb-3">
@@ -284,7 +339,7 @@ export default function LogWorkout() {
                   {ex.notes && <p className="mt-1 text-xs text-zinc-600">{ex.notes}</p>}
                 </div>
                 <div className="space-y-2">
-                  {Array.from({ length: maxSets }, (_, i) => i + 1).map((setNum) => {
+                  {Array.from({ length: visibleCount }, (_, i) => i + 1).map((setNum) => {
                     const key = `${ex.id}-${setNum}`
                     const s = sets[key] ?? {}
                     return (
@@ -315,6 +370,26 @@ export default function LogWorkout() {
                       </div>
                     )
                   })}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => addSet(ex)}
+                    className="flex items-center gap-1 rounded-lg border border-emerald-600/50 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-600/10"
+                  >
+                    <Plus size={14} />
+                    Add set
+                  </button>
+                  {canRemoveLast && (
+                    <button
+                      type="button"
+                      onClick={() => removeLastSet(ex)}
+                      className="flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-800"
+                    >
+                      <Minus size={14} />
+                      Remove last set
+                    </button>
+                  )}
                 </div>
               </section>
             )

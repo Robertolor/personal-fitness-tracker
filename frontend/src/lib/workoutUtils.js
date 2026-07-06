@@ -45,3 +45,10 @@ export function parseTargetSets(targetSets) {
   const match = String(targetSets).match(/\d+/)
   return match ? parseInt(match[0], 10) : 4
 }
+
+/** Visible set rows: max of template target and highest saved set_number */
+export function getExerciseSetCount(targetSets, existingSets = []) {
+  const templateCount = parseTargetSets(targetSets)
+  const highestSaved = existingSets.reduce((max, s) => Math.max(max, s.set_number ?? 0), 0)
+  return Math.max(templateCount, highestSaved)
+}
