@@ -54,6 +54,26 @@ export function suggestRoutine(calendarRoutine, lastRoutineName) {
 }
 
 /**
+ * In-progress session for a date (prefers one with logged sets).
+ */
+export async function fetchActiveSessionForDate(supabase, userId, sessionDate) {
+  const { data } = await supabase
+    .from('workout_sessions')
+    .select('*, workout_sets(*)')
+    .eq('user_id', userId)
+    .eq('session_date', sessionDate)
+    .order('created_at', { ascending: false })
+
+  if (!data?.length) return null
+
+  const inProgress = data.filter((s) => !s.completed_at)
+  const withSets = inProgress.find((s) => (s.workout_sets?.length ?? 0) > 0)
+  if (withSets) return withSets
+  if (inProgress.length) return inProgress[0]
+  return null
+}
+
+/**
  * Most recent session that has logged sets or was marked complete.
  */
 export async function fetchLastWorkoutSession(supabase, userId) {

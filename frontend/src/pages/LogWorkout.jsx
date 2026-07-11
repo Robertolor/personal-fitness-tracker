@@ -10,14 +10,30 @@ import {
   formatDateISO,
   suggestRoutine,
   fetchLastWorkoutSession,
+  fetchActiveSessionForDate,
   TRAINING_CYCLE,
 } from '../lib/schedule'
+
+const WORKOUT_STORAGE_KEY = 'fitness-workout-params'
+
+function readStoredWorkoutParams() {
+  try {
+    const raw = sessionStorage.getItem(WORKOUT_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredWorkoutParams(routine, date) {
+  sessionStorage.setItem(WORKOUT_STORAGE_KEY, JSON.stringify({ routine, date }))
+}
 import { DEFAULT_SCHEDULE } from '../data/routines'
 import { getExerciseSetCount, parseTargetSets } from '../lib/workoutUtils'
 
 export default function LogWorkout() {
   const { user, settings } = useAuth()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const schedule = settings?.schedule ?? DEFAULT_SCHEDULE
   const startDate = settings?.start_date ?? '2026-06-01'
 
@@ -42,6 +58,21 @@ export default function LogWorkout() {
   const weekNum = getWeekNumber(sessionDateObj, startDate)
   const routineMismatch = selectedRoutine && selectedRoutine !== calendarSuggestion
 
+  const persistWorkoutParams = (routine, date) => {
+    writeStoredWorkoutParams(routine, date)
+    setSearchParams({ routine, date }, { replace: true })
+  }
+
+  const handleDateChange = (date) => {
+    setSessionDate(date)
+    if (selectedRoutine) persistWorkoutParams(selectedRoutine, date)
+  }
+
+  const handleRoutineChange = (routine) => {
+    setSelectedRoutine(routine)
+    persistWorkoutParams(routine, sessionDate)
+  }
+
   useEffect(() => {
     if (!user) {
       setInitLoading(false)
@@ -49,18 +80,33 @@ export default function LogWorkout() {
     }
     const init = async () => {
       setInitLoading(true)
-      const cal = getWorkoutDayForDate(sessionDate, startDate, schedule)
+      const stored = readStoredWorkoutParams()
+      const date = urlDate || stored?.date || todayISO
+      const cal = getWorkoutDayForDate(date, startDate, schedule)
       setCalendarRoutine(cal)
-      if (!urlRoutine) {
-        const last = await fetchLastWorkoutSession(supabase, user.id)
-        setSelectedRoutine(suggestRoutine(cal, last?.routine_name))
-      } else {
-        setSelectedRoutine(urlRoutine)
+      setSessionDate(date)
+
+      let routine = urlRoutine || stored?.routine
+      if (!routine) {
+        const active = await fetchActiveSessionForDate(supabase, user.id, date)
+        if (active?.routine_name) {
+          routine = active.routine_name
+        } else {
+          const last = await fetchLastWorkoutSession(supabase, user.id)
+          routine = suggestRoutine(cal, last?.routine_name)
+        }
+      }
+
+      setSelectedRoutine(routine)
+      if (routine && date && (routine !== urlRoutine || date !== urlDate)) {
+        persistWorkoutParams(routine, date)
+      } else if (routine && date) {
+        writeStoredWorkoutParams(routine, date)
       }
       setInitLoading(false)
     }
     init()
-  }, [user, startDate, schedule, urlRoutine, sessionDate])
+  }, [user, startDate, schedule, urlRoutine, urlDate])
 
   useEffect(() => {
     if (!user || !selectedRoutine || initLoading) return
@@ -248,7 +294,7 @@ export default function LogWorkout() {
             <input
               type="date"
               value={sessionDate}
-              onChange={(e) => setSessionDate(e.target.value)}
+              onChange={(e) => handleDateChange(e.target.value)}
               className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-emerald-500"
             />
           </label>
@@ -256,7 +302,7 @@ export default function LogWorkout() {
             <span className="text-zinc-500">Routine</span>
             <select
               value={selectedRoutine}
-              onChange={(e) => setSelectedRoutine(e.target.value)}
+              onChange={(e) => handleRoutineChange(e.target.value)}
               className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-emerald-500"
             >
               {TRAINING_CYCLE.map((name) => (
@@ -277,7 +323,7 @@ export default function LogWorkout() {
   const exercises = [...(routine.routine_exercises ?? [])].sort((a, b) => a.sort_order - b.sort_order)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28 md:pb-24">
       <div className="space-y-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-sm">
@@ -285,7 +331,7 @@ export default function LogWorkout() {
             <input
               type="date"
               value={sessionDate}
-              onChange={(e) => setSessionDate(e.target.value)}
+              onChange={(e) => handleDateChange(e.target.value)}
               className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-emerald-500"
             />
           </label>
@@ -293,7 +339,7 @@ export default function LogWorkout() {
             <span className="text-zinc-500">Routine</span>
             <select
               value={selectedRoutine}
-              onChange={(e) => setSelectedRoutine(e.target.value)}
+              onChange={(e) => handleRoutineChange(e.target.value)}
               className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none focus:border-emerald-500"
             >
               {TRAINING_CYCLE.map((name) => (
@@ -394,30 +440,31 @@ export default function LogWorkout() {
               </section>
             )
           })}
-
-          {message && <p className="text-sm text-emerald-400">{message}</p>}
-
-          <div className="flex flex-wrap gap-3 pb-8">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => saveWorkout(false)}
-              className="rounded-lg border border-zinc-700 px-5 py-2.5 text-sm font-medium hover:bg-zinc-800 disabled:opacity-50"
-            >
-              Save progress
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => saveWorkout(true)}
-              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50"
-            >
-              <Check size={16} />
-              Complete workout
-            </button>
-          </div>
         </>
       )}
+
+      <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-zinc-800 bg-zinc-950/95 px-4 py-3 backdrop-blur md:bottom-0">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
+          {message && <p className="w-full text-sm text-emerald-400">{message}</p>}
+          <button
+            type="button"
+            disabled={saving || loading}
+            onClick={() => saveWorkout(false)}
+            className="flex-1 rounded-lg border border-zinc-700 px-5 py-2.5 text-sm font-medium hover:bg-zinc-800 disabled:opacity-50 sm:flex-none"
+          >
+            Save progress
+          </button>
+          <button
+            type="button"
+            disabled={saving || loading}
+            onClick={() => saveWorkout(true)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50 sm:flex-none"
+          >
+            <Check size={16} />
+            Complete workout
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
