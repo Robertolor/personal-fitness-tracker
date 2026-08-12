@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
+import { differenceInCalendarDays, parseISO } from 'date-fns'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import BodyCompositionChart from '../components/BodyCompositionChart'
 import ExerciseProgressChart from '../components/ExerciseProgressChart'
+import { rollingAverage, rateOfChange, projectToDate, paceStatus, weeklyAdherenceCorrelation } from '../lib/bodyComp'
 
 export default function Progress() {
-  const { user } = useAuth()
+  const { user, settings } = useAuth()
   const [checkins, setCheckins] = useState([])
   const [measurements, setMeasurements] = useState([])
   const [sessions, setSessions] = useState([])
@@ -36,12 +38,66 @@ export default function Progress() {
     load()
   }, [user])
 
+  const weightAvgPoints = useMemo(
+    () => rollingAverage(checkins.filter((c) => c.weight_kg != null).map((c) => ({ date: c.checkin_date, value: c.weight_kg }))),
+    [checkins]
+  )
+  const waistAvgPoints = useMemo(
+    () => rollingAverage(measurements.filter((m) => m.waist_cm != null).map((m) => ({ date: m.measured_date, value: m.waist_cm }))),
+    [measurements]
+  )
+  const weightTrend = useMemo(() => rateOfChange(weightAvgPoints), [weightAvgPoints])
+  const waistTrend = useMemo(() => rateOfChange(waistAvgPoints), [waistAvgPoints])
+  const pace = paceStatus(weightTrend?.kgPerWeek)
+  const tripDate = settings?.trip_date
+  const daysToTrip = tripDate ? differenceInCalendarDays(parseISO(tripDate), new Date()) : null
+  const projectedWeightAtTrip = tripDate ? projectToDate(weightAvgPoints, tripDate) : null
+  const projectedWaistAtTrip = tripDate ? projectToDate(waistAvgPoints, tripDate) : null
+  const adherenceCorrelation = useMemo(() => weeklyAdherenceCorrelation(checkins), [checkins])
+
+  const paceCopy = {
+    on_track: { text: 'En ritmo', color: 'text-emerald-400' },
+    too_slow: { text: 'Ritmo lento - considera bajar calorías en el próximo checkpoint', color: 'text-amber-400' },
+    too_fast: { text: 'Ritmo muy rápido - riesgo de perder músculo, considera subir un poco', color: 'text-amber-400' },
+    unknown: { text: 'Datos insuficientes aún', color: 'text-zinc-500' },
+  }[pace]
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Progress</h1>
         <p className="text-sm text-zinc-500">Body composition trends and exercise progression</p>
       </div>
+
+      {!loading && (weightTrend || tripDate) && (
+        <section className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <p className="text-xs text-zinc-500">Ritmo (peso, promedio 7d)</p>
+            <p className="mt-1 text-xl font-mono">
+              {weightTrend ? `${weightTrend.kgPerWeek > 0 ? '+' : ''}${weightTrend.kgPerWeek} kg/sem` : '—'}
+            </p>
+            {paceCopy && <p className={`mt-1 text-xs ${paceCopy.color}`}>{paceCopy.text}</p>}
+            {waistTrend && <p className="mt-2 text-xs text-zinc-500">Cintura: {waistTrend.kgPerWeek > 0 ? '+' : ''}{waistTrend.kgPerWeek} cm/sem</p>}
+          </div>
+
+          {tripDate && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+              <p className="text-xs text-zinc-500">Días para el viaje</p>
+              <p className="mt-1 text-xl font-mono">{daysToTrip != null ? Math.max(0, daysToTrip) : '—'}</p>
+              <p className="mt-1 text-xs text-zinc-500">{tripDate}</p>
+            </div>
+          )}
+
+          {tripDate && (projectedWeightAtTrip != null || projectedWaistAtTrip != null) && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+              <p className="text-xs text-zinc-500">Proyección al día del viaje</p>
+              {projectedWeightAtTrip != null && <p className="mt-1 text-sm">Peso ≈ <span className="font-mono">{projectedWeightAtTrip} kg</span></p>}
+              {projectedWaistAtTrip != null && <p className="mt-1 text-sm">Cintura ≈ <span className="font-mono">{projectedWaistAtTrip} cm</span></p>}
+              <p className="mt-1 text-[11px] text-zinc-600">Basado en tu ritmo actual, no garantizado.</p>
+            </div>
+          )}
+        </section>
+      )}
 
       <section>
         <h2 className="mb-4 text-lg font-semibold">Body composition</h2>
@@ -51,6 +107,41 @@ export default function Progress() {
           <BodyCompositionChart checkins={checkins} measurements={measurements} />
         )}
       </section>
+
+      {adherenceCorrelation.length > 1 && (
+        <section>
+          <h2 className="mb-4 text-lg font-semibold">Adherencia vs. progreso semanal</h2>
+          <div className="overflow-x-auto rounded-xl border border-zinc-800">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-900 text-left text-zinc-500">
+                <tr>
+                  <th className="px-4 py-2">Semana</th>
+                  <th className="px-4 py-2">Adherencia prom (1-5)</th>
+                  <th className="px-4 py-2">Peso prom</th>
+                  <th className="px-4 py-2">Cambio vs. semana anterior</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adherenceCorrelation.map((w) => (
+                  <tr key={w.week} className="border-t border-zinc-800">
+                    <td className="px-4 py-2">Semana {w.week}</td>
+                    <td className="px-4 py-2">{w.avgAdherence ?? '—'}</td>
+                    <td className="px-4 py-2">{w.avgWeight ?? '—'} kg</td>
+                    <td className="px-4 py-2">
+                      {w.weightChange != null ? (
+                        <span className={w.weightChange < 0 ? 'text-emerald-400' : 'text-amber-400'}>
+                          {w.weightChange > 0 ? '+' : ''}{w.weightChange} kg
+                        </span>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">Si ves semanas de baja adherencia junto a estancamientos, ahí está la palanca más fácil de mover - antes que tocar calorías de nuevo.</p>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-4 text-lg font-semibold">Exercise progression</h2>

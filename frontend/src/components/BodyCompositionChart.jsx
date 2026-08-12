@@ -10,15 +10,17 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { format, parseISO } from 'date-fns'
+import { rollingAverage } from '../lib/bodyComp'
 
 const OVERLAYS = [
   { key: 'weight', label: 'Weight (kg)', color: '#34d399', dataKey: 'weight_kg' },
   { key: 'bf', label: 'Body Fat %', color: '#60a5fa', dataKey: 'body_fat_pct' },
   { key: 'waist', label: 'Waist (cm)', color: '#f472b6', dataKey: 'waist_cm' },
+  { key: 'avg7', label: '7-day avg (weight/waist)', color: '#facc15', dataKey: null },
 ]
 
 export default function BodyCompositionChart({ checkins = [], measurements = [] }) {
-  const [visible, setVisible] = useState({ weight: true, bf: true, waist: true })
+  const [visible, setVisible] = useState({ weight: true, bf: true, waist: true, avg7: true })
 
   const merged = {}
   checkins.forEach((c) => {
@@ -30,11 +32,22 @@ export default function BodyCompositionChart({ checkins = [], measurements = [] 
     merged[d] = { ...merged[d], date: d, waist_cm: m.waist_cm }
   })
 
+  const weightAvg = rollingAverage(
+    Object.values(merged).map((r) => ({ date: r.date, value: r.weight_kg ?? null }))
+  )
+  const waistAvg = rollingAverage(
+    Object.values(merged).map((r) => ({ date: r.date, value: r.waist_cm ?? null }))
+  )
+  const weightAvgByDate = Object.fromEntries(weightAvg.map((p) => [p.date, p.avg]))
+  const waistAvgByDate = Object.fromEntries(waistAvg.map((p) => [p.date, p.avg]))
+
   const data = Object.values(merged)
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((row) => ({
       ...row,
       label: format(parseISO(row.date), 'MMM d'),
+      weight_avg7: weightAvgByDate[row.date] ?? null,
+      waist_avg7: waistAvgByDate[row.date] ?? null,
     }))
 
   const toggle = (key) => setVisible((v) => ({ ...v, [key]: !v[key] }))
@@ -84,6 +97,12 @@ export default function BodyCompositionChart({ checkins = [], measurements = [] 
           )}
           {visible.waist && (
             <Line type="monotone" dataKey="waist_cm" name="Waist (cm)" stroke="#f472b6" dot={false} strokeWidth={2} connectNulls />
+          )}
+          {visible.avg7 && (
+            <>
+              <Line type="monotone" dataKey="weight_avg7" name="Weight 7d avg" stroke="#facc15" dot={false} strokeWidth={2} strokeDasharray="5 3" connectNulls />
+              <Line type="monotone" dataKey="waist_avg7" name="Waist 7d avg" stroke="#c084fc" dot={false} strokeWidth={2} strokeDasharray="5 3" connectNulls />
+            </>
           )}
         </LineChart>
       </ResponsiveContainer>

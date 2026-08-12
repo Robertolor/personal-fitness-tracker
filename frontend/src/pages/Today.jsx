@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Dumbbell, Waves, Moon, Zap, ChevronRight } from 'lucide-react'
+import { Dumbbell, Activity, Moon, Zap, ChevronRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
@@ -43,9 +43,12 @@ export default function Today() {
       const suggested = suggestRoutine(calendarWorkout, last?.routine_name)
       setSelectedRoutine((prev) => prev ?? suggested)
 
+      // On true rest days, cardio is keyed to "Rest" (optional). On gym days it's
+      // keyed to the actual cycling routine, not the generic "Gym" calendar marker.
+      const cardioKey = calendarWorkout === 'Rest' ? 'Rest' : suggested
       const [checkinRes, swimRes] = await Promise.all([
         supabase.from('daily_checkins').select('*').eq('user_id', user.id).eq('checkin_date', todayISO).maybeSingle(),
-        supabase.from('swimming_plans').select('*').eq('user_id', user.id).eq('workout_day', calendarWorkout).maybeSingle(),
+        supabase.from('swimming_plans').select('*').eq('user_id', user.id).eq('workout_day', cardioKey).maybeSingle(),
       ])
       setCheckin(checkinRes.data)
       setSwimming(swimRes.data)
@@ -76,7 +79,7 @@ export default function Today() {
       <div>
         <p className="text-sm text-zinc-500">{format(today, 'EEEE, MMMM d, yyyy')}</p>
         <h1 className="text-2xl font-bold tracking-tight">
-          Week {weekNum} · {calendarWorkout}
+          Week {weekNum} · {calendarWorkout === 'Rest' ? 'Rest' : (selectedRoutine ?? 'Gym day')}
         </h1>
       </div>
 
@@ -109,7 +112,7 @@ export default function Today() {
             }
           />
           <Row label="Up next in cycle" value={upNext} />
-          <Row label="Calendar suggests" value={calendarWorkout} />
+          <Row label="Calendar" value={calendarWorkout === 'Rest' ? 'Rest day' : 'Gym day'} />
         </div>
 
         <label className="mb-3 flex flex-col gap-1 text-sm">
@@ -137,9 +140,9 @@ export default function Today() {
                 {session.completed_at && ' · Completed'}
               </p>
             )}
-            {selectedRoutine !== calendarWorkout && calendarWorkout !== 'Rest' && (
+            {calendarWorkout === 'Rest' && (
               <p className="mt-2 text-xs text-amber-400/80">
-                Different from calendar suggestion ({calendarWorkout})
+                Hoy es día de descanso en el calendario - esto es una sesión de reposición opcional.
               </p>
             )}
           </>
@@ -149,8 +152,8 @@ export default function Today() {
       {swimming && (
         <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
           <div className="mb-3 flex items-center gap-2">
-            <Waves className="text-sky-400" size={20} />
-            <h2 className="font-semibold">Swimming plan</h2>
+            <Activity className="text-sky-400" size={20} />
+            <h2 className="font-semibold">Cardio (A/C gym)</h2>
           </div>
           <div className="grid gap-2 text-sm">
             <Row label="Duration" value={`${swimming.minutes} min`} />
@@ -159,7 +162,7 @@ export default function Today() {
           </div>
           {checkin?.swimming_completed && (
             <span className="mt-3 inline-block rounded-full bg-emerald-600/20 px-3 py-1 text-xs text-emerald-400">
-              Swimming done today
+              Cardio done today
             </span>
           )}
         </section>

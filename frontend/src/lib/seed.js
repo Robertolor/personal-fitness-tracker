@@ -57,7 +57,13 @@ export async function seedUserData(userId) {
       user_id: userId,
       start_date: DEFAULT_START_DATE,
       schedule: DEFAULT_SCHEDULE,
-      calorie_target: 1750,
+      // Calibration starting point (not a formula-based guess) - see docs/personal-trainer rule.
+      // Protein/fat are floors that don't get cut; calories/carbs are the levers adjusted
+      // every 10 days based on real 7-day rolling average weight trend.
+      calorie_target: 1900,
+      protein_target_g: 185,
+      fat_target_g: 60,
+      carb_target_g: 155,
     })
   if (settingsError) throw settingsError
 

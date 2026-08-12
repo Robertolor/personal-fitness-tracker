@@ -1,11 +1,13 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, TrendingUp, Dumbbell, ClipboardCheck, BookOpen, Settings } from 'lucide-react'
+import { Calendar, TrendingUp, Dumbbell, ClipboardCheck, Utensils, Camera, BookOpen, Settings } from 'lucide-react'
 
 const links = [
   { to: '/', label: 'Today', icon: Calendar },
-  { to: '/progress', label: 'Progress', icon: TrendingUp },
+  { to: '/menu', label: 'Menu', icon: Utensils },
   { to: '/workout', label: 'Workout', icon: Dumbbell },
   { to: '/checkin', label: 'Check-in', icon: ClipboardCheck },
+  { to: '/progress', label: 'Progress', icon: TrendingUp },
+  { to: '/photos', label: 'Photos', icon: Camera },
   { to: '/journal', label: 'Journal', icon: BookOpen },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -13,7 +15,7 @@ const links = [
 export default function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur md:hidden">
-      <ul className="flex justify-around px-1 py-2">
+      <ul className="flex justify-around gap-0.5 overflow-x-auto px-1 py-2">
         {links.map(({ to, label, icon: Icon }) => (
           <li key={to}>
             <NavLink

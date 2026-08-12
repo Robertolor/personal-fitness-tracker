@@ -8,6 +8,8 @@ import LogWorkout from './pages/LogWorkout'
 import CheckIn from './pages/CheckIn'
 import Settings from './pages/Settings'
 import Journal from './pages/Journal'
+import MealPlan from './pages/MealPlan'
+import ProgressPhotos from './pages/ProgressPhotos'
 import { Loader2 } from 'lucide-react'
 
 function ProtectedRoute({ children }) {
@@ -38,6 +40,8 @@ function AppRoutes() {
         <Route path="progress" element={<Progress />} />
         <Route path="workout" element={<LogWorkout />} />
         <Route path="checkin" element={<CheckIn />} />
+        <Route path="menu" element={<MealPlan />} />
+        <Route path="photos" element={<ProgressPhotos />} />
         <Route path="settings" element={<Settings />} />
         <Route path="journal" element={<Journal />} />
       </Route>

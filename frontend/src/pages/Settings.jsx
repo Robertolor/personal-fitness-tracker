@@ -4,18 +4,22 @@ import { supabase } from '../lib/supabase'
 import { DEFAULT_SCHEDULE } from '../data/routines'
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const WORKOUT_OPTIONS = ['Rest', 'Push A', 'Pull A', 'Legs A', 'Push B', 'Pull B', 'Legs B']
+// 'Gym' just marks a training day - the app auto-cycles through the 6 routines
+// (Push/Pull/Legs A/B) across your gym days so all of them get equal rotation.
+const WORKOUT_OPTIONS = ['Rest', 'Gym']
 
 export default function Settings() {
   const { user, settings, refreshSettings } = useAuth()
   const [form, setForm] = useState({
     start_date: '2026-06-01',
-    calorie_target: 1750,
-    protein_target_g: 180,
-    fat_target_g: 65,
-    carb_target_g: 225,
+    calorie_target: 1900,
+    protein_target_g: 185,
+    fat_target_g: 60,
+    carb_target_g: 155,
     body_weight_start_kg: 80,
     goal_body_fat_pct: 0.15,
+    height_cm: '',
+    trip_date: '',
     schedule: [...DEFAULT_SCHEDULE],
   })
   const [swimming, setSwimming] = useState([])
@@ -26,12 +30,14 @@ export default function Settings() {
     if (settings) {
       setForm({
         start_date: settings.start_date ?? '2026-06-01',
-        calorie_target: settings.calorie_target ?? 1750,
-        protein_target_g: settings.protein_target_g ?? 180,
-        fat_target_g: settings.fat_target_g ?? 65,
-        carb_target_g: settings.carb_target_g ?? 225,
+        calorie_target: settings.calorie_target ?? 1900,
+        protein_target_g: settings.protein_target_g ?? 185,
+        fat_target_g: settings.fat_target_g ?? 60,
+        carb_target_g: settings.carb_target_g ?? 155,
         body_weight_start_kg: settings.body_weight_start_kg ?? 80,
         goal_body_fat_pct: settings.goal_body_fat_pct ?? 0.15,
+        height_cm: settings.height_cm ?? '',
+        trip_date: settings.trip_date ?? '',
         schedule: settings.schedule ?? [...DEFAULT_SCHEDULE],
       })
     }
@@ -59,6 +65,8 @@ export default function Settings() {
         ...form,
         goal_body_fat_pct: Number(form.goal_body_fat_pct),
         body_weight_start_kg: Number(form.body_weight_start_kg),
+        height_cm: form.height_cm !== '' ? Number(form.height_cm) : null,
+        trip_date: form.trip_date || null,
       })
       if (error) throw error
       await refreshSettings()
@@ -70,7 +78,7 @@ export default function Settings() {
     }
   }
 
-  const saveSwimming = async (plan) => {
+  const saveCardio = async (plan) => {
     const { error } = await supabase.from('swimming_plans').update({
       goal: plan.goal,
       minutes: plan.minutes,
@@ -79,7 +87,7 @@ export default function Settings() {
       structure: plan.structure,
       recovery_concern: plan.recovery_concern,
     }).eq('id', plan.id)
-    if (!error) setMessage(`Swimming plan for ${plan.workout_day} updated.`)
+    if (!error) setMessage(`Cardio plan for ${plan.workout_day} updated.`)
   }
 
   return (
@@ -99,12 +107,20 @@ export default function Settings() {
           <Input label="Carbs (g)" type="number" value={form.carb_target_g} onChange={(v) => setForm({ ...form, carb_target_g: Number(v) })} />
           <Input label="Starting weight (kg)" type="number" step="0.1" value={form.body_weight_start_kg} onChange={(v) => setForm({ ...form, body_weight_start_kg: v })} />
           <Input label="Goal body fat (decimal)" type="number" step="0.01" value={form.goal_body_fat_pct} onChange={(v) => setForm({ ...form, goal_body_fat_pct: v })} />
+          <Input label="Height (cm)" type="number" step="0.1" value={form.height_cm} onChange={(v) => setForm({ ...form, height_cm: v })} />
+          <Input label="Trip / target date" type="date" value={form.trip_date} onChange={(v) => setForm({ ...form, trip_date: v })} />
         </div>
+        <p className="text-xs text-zinc-500">
+          Height feeds the Navy body-fat % estimate and dashboard projections on the Progress page. Trip date shows a countdown there.
+        </p>
       </section>
 
       <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
         <h2 className="font-semibold">Weekly schedule</h2>
-        <p className="text-xs text-zinc-500">Sunday = Rest by default. Program starts 2026-06-01 (Monday = Push A).</p>
+        <p className="text-xs text-zinc-500">
+          Mark which days are gym days vs. rest. The specific routine (Push A, Pull A, Legs A, Push B, Pull B, Legs B)
+          auto-rotates on gym days based on what you last trained, so all 6 stay balanced across weeks.
+        </p>
         {DAYS.map((day, i) => (
           <div key={day} className="flex items-center justify-between gap-4">
             <span className="text-sm text-zinc-400">{day}</span>
@@ -122,7 +138,8 @@ export default function Settings() {
       </section>
 
       <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-        <h2 className="font-semibold">Swimming plans</h2>
+        <h2 className="font-semibold">Cardio plans</h2>
+        <p className="text-xs text-zinc-500">In an air-conditioned gym (treadmill/bike/elliptical) — no outdoor pool heat.</p>
         {swimming.map((plan) => (
           <details key={plan.id} className="rounded-lg border border-zinc-800 p-3">
             <summary className="cursor-pointer font-medium text-emerald-400">{plan.workout_day}</summary>
@@ -140,7 +157,7 @@ export default function Settings() {
                   />
                 </div>
               ))}
-              <button type="button" onClick={() => saveSwimming(swimming.find((p) => p.id === plan.id))} className="text-xs text-emerald-400 hover:underline">
+              <button type="button" onClick={() => saveCardio(swimming.find((p) => p.id === plan.id))} className="text-xs text-emerald-400 hover:underline">
                 Save {plan.workout_day}
               </button>
             </div>

@@ -48,6 +48,8 @@ export default function LogWorkout() {
   const [session, setSession] = useState(null)
   const [sets, setSets] = useState({})
   const [exerciseSetCounts, setExerciseSetCounts] = useState({})
+  const [lastSetsByKey, setLastSetsByKey] = useState({})
+  const [lastSessionDate, setLastSessionDate] = useState(null)
   const [loading, setLoading] = useState(true)
   const [initLoading, setInitLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -56,7 +58,9 @@ export default function LogWorkout() {
   const sessionDateObj = parseISO(sessionDate)
   const calendarSuggestion = calendarRoutine ?? getWorkoutDayForDate(sessionDateObj, startDate, schedule)
   const weekNum = getWeekNumber(sessionDateObj, startDate)
-  const routineMismatch = selectedRoutine && selectedRoutine !== calendarSuggestion
+  // Calendar only marks 'Gym'/'Rest' now (the specific routine auto-cycles), so the
+  // only meaningful mismatch to flag is logging a real workout on a calendar rest day.
+  const routineMismatch = selectedRoutine && calendarSuggestion === 'Rest'
 
   const persistWorkoutParams = (routine, date) => {
     writeStoredWorkoutParams(routine, date)
@@ -134,6 +138,26 @@ export default function LogWorkout() {
 
     setSession(sessionData)
 
+    // Pull the most recent previous session of this same routine (any date before
+    // this one) so we can show/prefill "what you lifted last time" per exercise -
+    // that's the number you actually want in front of you at the gym.
+    const { data: priorSessions } = await supabase
+      .from('workout_sessions')
+      .select('*, workout_sets(*)')
+      .eq('user_id', user.id)
+      .eq('routine_name', selectedRoutine)
+      .lt('session_date', sessionDate)
+      .order('session_date', { ascending: false })
+      .limit(5)
+
+    const priorWithSets = (priorSessions ?? []).find((s) => (s.workout_sets?.length ?? 0) > 0)
+    const lastByKey = {}
+    priorWithSets?.workout_sets?.forEach((s) => {
+      lastByKey[`${s.exercise_name}-${s.set_number}`] = { weight_kg: s.weight_kg, reps: s.reps, rir: s.rir }
+    })
+    setLastSetsByKey(lastByKey)
+    setLastSessionDate(priorWithSets?.session_date ?? null)
+
     const initial = {}
     const counts = {}
     routineData?.routine_exercises?.forEach((ex) => {
@@ -143,12 +167,13 @@ export default function LogWorkout() {
       for (let i = 1; i <= setCount; i++) {
         const key = `${ex.id}-${i}`
         const found = existing.find((s) => s.set_number === i)
+        const last = lastByKey[`${ex.name}-${i}`]
         initial[key] = {
           exercise_id: ex.id,
           exercise_name: ex.name,
           set_number: i,
-          weight_kg: found?.weight_kg ?? '',
-          reps: found?.reps ?? '',
+          weight_kg: found?.weight_kg ?? last?.weight_kg ?? '',
+          reps: found?.reps ?? last?.reps ?? '',
           rir: found?.rir ?? '',
           id: found?.id,
         }
@@ -356,7 +381,7 @@ export default function LogWorkout() {
         <h1 className="text-2xl font-bold">{selectedRoutine}</h1>
         {routineMismatch && (
           <p className="text-sm text-amber-400/90">
-            Calendar suggests {calendarSuggestion} for this date — you can log any routine.
+            This is a calendar rest day - logging here is an optional make-up session.
           </p>
         )}
       </div>
@@ -374,6 +399,7 @@ export default function LogWorkout() {
             const lastSet = sets[lastKey] ?? {}
             const lastIsEmpty = !lastSet.weight_kg && !lastSet.reps
             const canRemoveLast = visibleCount > 1 && (visibleCount > templateMin || lastIsEmpty)
+            const lastSetsForEx = Array.from({ length: visibleCount }, (_, i) => lastSetsByKey[`${ex.name}-${i + 1}`]).filter(Boolean)
 
             return (
               <section key={ex.id} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
@@ -383,6 +409,13 @@ export default function LogWorkout() {
                     {ex.target_sets} sets · {ex.rep_range} · {ex.primary_muscle}
                   </p>
                   {ex.notes && <p className="mt-1 text-xs text-zinc-600">{ex.notes}</p>}
+                  {lastSetsForEx.length > 0 && (
+                    <p className="mt-1.5 text-xs text-emerald-400/80">
+                      Last time{lastSessionDate ? ` (${format(parseISO(lastSessionDate), 'MMM d')})` : ''}: {lastSetsForEx
+                        .map((s) => `${s.weight_kg ?? '—'}kg×${s.reps ?? '—'}${s.rir != null ? ` @RIR${s.rir}` : ''}`)
+                        .join(', ')}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   {Array.from({ length: visibleCount }, (_, i) => i + 1).map((setNum) => {

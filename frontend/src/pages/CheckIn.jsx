@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { formatDateISO } from '../lib/schedule'
 import { ScaleStepper } from '../components/NumberStepper'
+import { navyBodyFatPct } from '../lib/bodyComp'
 
 const emptyCheckin = {
   weight_kg: '',
@@ -137,7 +138,13 @@ export default function CheckIn() {
     }
   }
 
-  const calorieTarget = settings?.calorie_target ?? 1750
+  const calorieTarget = settings?.calorie_target ?? 1900
+  const navyEstimate = navyBodyFatPct({
+    gender: 'male',
+    heightCm: settings?.height_cm ? Number(settings.height_cm) : null,
+    waistCm: measurement.waist_cm !== '' ? Number(measurement.waist_cm) : null,
+    neckCm: measurement.neck_cm !== '' ? Number(measurement.neck_cm) : null,
+  })
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -180,7 +187,7 @@ export default function CheckIn() {
 
           <div className="flex flex-wrap gap-4">
             <Toggle label="Workout done" checked={checkin.workout_completed} onChange={(v) => setCheckin({ ...checkin, workout_completed: v })} />
-            <Toggle label="Swimming done" checked={checkin.swimming_completed} onChange={(v) => setCheckin({ ...checkin, swimming_completed: v })} />
+            <Toggle label="Cardio done" checked={checkin.swimming_completed} onChange={(v) => setCheckin({ ...checkin, swimming_completed: v })} />
           </div>
 
           <Field label="Notes" value={checkin.notes} onChange={(v) => setCheckin({ ...checkin, notes: v })} multiline />
@@ -191,7 +198,15 @@ export default function CheckIn() {
         </div>
       ) : (
         <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <p className="text-xs text-amber-500/80">Waist at navel is the most important measurement.</p>
+          <details className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-xs text-zinc-400">
+            <summary className="cursor-pointer font-medium text-amber-500/80">How to measure waist &amp; neck (Navy method)</summary>
+            <ul className="mt-2 space-y-1.5 list-disc pl-4">
+              <li><strong>Waist:</strong> standing relaxed, tape at the navel (belly button) level, parallel to the floor. Measure before eating, not right after a workout (bloating/pump distorts it).</li>
+              <li><strong>Neck:</strong> tape just below the larynx (Adam&apos;s apple), pointing slightly downward toward the front, same tension every time — not too tight.</li>
+              <li>Same time of day every time (recommended: morning, fasted, right after waking) for consistent, comparable numbers.</li>
+            </ul>
+          </details>
+
           <Field label="Waist (cm)" value={measurement.waist_cm} onChange={(v) => setMeasurement({ ...measurement, waist_cm: v })} type="number" step="0.1" />
           <Field label="Chest (cm)" value={measurement.chest_cm} onChange={(v) => setMeasurement({ ...measurement, chest_cm: v })} type="number" step="0.1" />
           <Field label="Hips (cm)" value={measurement.hips_cm} onChange={(v) => setMeasurement({ ...measurement, hips_cm: v })} type="number" step="0.1" />
@@ -202,6 +217,16 @@ export default function CheckIn() {
             <Field label="Right thigh (cm)" value={measurement.right_thigh_cm} onChange={(v) => setMeasurement({ ...measurement, right_thigh_cm: v })} type="number" step="0.1" />
           </div>
           <Field label="Neck (cm)" value={measurement.neck_cm} onChange={(v) => setMeasurement({ ...measurement, neck_cm: v })} type="number" step="0.1" />
+
+          {navyEstimate != null && (
+            <p className="rounded-lg bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
+              Estimated body fat (Navy method): <strong>{navyEstimate}%</strong>
+            </p>
+          )}
+          {navyEstimate == null && settings && !settings.height_cm && (
+            <p className="text-xs text-zinc-500">Add your height in Settings to get a live body-fat % estimate here.</p>
+          )}
+
           <Field label="Notes" value={measurement.notes} onChange={(v) => setMeasurement({ ...measurement, notes: v })} multiline />
 
           <button type="button" disabled={saving} onClick={saveMeasurement} className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50">
