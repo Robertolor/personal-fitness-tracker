@@ -10,10 +10,10 @@ export const DEFAULT_SCHEDULE = [
   'Rest',  // Sunday (0)
   'Gym',   // Monday
   'Gym',   // Tuesday
-  'Rest',  // Wednesday - mid-week recovery
+  'Gym',   // Wednesday
   'Gym',   // Thursday
   'Gym',   // Friday
-  'Gym',   // Saturday
+  'Rest',  // Saturday
 ]
 
 export const DEFAULT_START_DATE = '2026-06-01'

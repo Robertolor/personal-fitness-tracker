@@ -5,7 +5,7 @@ Personal fitness tracker for daily check-ins, workout logging (sets/reps/weight/
 - **Supabase project:** `fitness-app-dev` · ref `yrihprcinsramxebvilf` · Frankfurt
 - **Deploy target:** Vercel (SPA)
 - **Default calorie target:** 1900 kcal (calibration starting point, editable in Settings - see `.cursor/rules/personal-trainer.mdc`)
-- **Program:** 5-day split (Push A/B, Pull A/B, Legs A/B) with Rest on Wednesday + Sunday, starting 2026-06-01
+- **Program:** 5-day split (Push A/B, Pull A/B, Legs A/B), gym Monday-Friday, Rest on weekends, starting 2026-06-01
 
 ## Features
 
@@ -102,15 +102,17 @@ scripts/
 
 ## Weekly schedule (default)
 
-| Day       | Workout |
-|-----------|---------|
-| Sunday    | Rest    |
-| Monday    | Push A  |
-| Tuesday   | Pull A  |
-| Wednesday | Rest    |
-| Thursday  | Legs A  |
-| Friday    | Push B  |
-| Saturday  | Pull B  |
+| Day       | Type |
+|-----------|------|
+| Sunday    | Rest |
+| Monday    | Gym  |
+| Tuesday   | Gym  |
+| Wednesday | Gym  |
+| Thursday  | Gym  |
+| Friday    | Gym  |
+| Saturday  | Rest |
+
+The specific routine (Push A, Pull A, Legs A, Push B, Pull B, Legs B) auto-cycles on gym days.
 
 Schedule and all macro targets are editable in **Settings**.
 
