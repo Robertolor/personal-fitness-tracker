@@ -20,9 +20,17 @@ export default function MealPlan() {
   const [person, setPerson] = useState('roberto')
   const [variant, setVariant] = useState('maintain')
   const [showExtras, setShowExtras] = useState(null)
-  // Which of the 3 options is currently picked for each meal slot. Changing any
-  // one of these reflows the budget for whatever comes after it in the day.
-  const [selection, setSelection] = useState({ breakfastIdx: 0, lunchIdx: 0, dinnerIdx: 0 })
+  // Which option is currently picked for each meal slot, plus which topping
+  // (for options with `toppingOptions`, e.g. oats: plátano / maní / almendras).
+  // Changing any of these reflows the budget for whatever comes after it in the day.
+  const [selection, setSelection] = useState({
+    breakfastIdx: 0,
+    lunchIdx: 0,
+    dinnerIdx: 0,
+    breakfastTopping: 'banana',
+    lunchTopping: 'banana',
+    dinnerTopping: 'banana',
+  })
 
   const clampedDay = dayNumberFromStart(startDate)
   const effectiveVariant = person === 'esposa' ? 'fixed' : variant
@@ -116,6 +124,8 @@ export default function MealPlan() {
         previews={breakfastPreviews}
         selectedIdx={selection.breakfastIdx}
         onSelect={(i) => setSelection((s) => ({ ...s, breakfastIdx: i }))}
+        topping={selection.breakfastTopping}
+        onSelectTopping={(key) => setSelection((s) => ({ ...s, breakfastTopping: key }))}
       />
       <MealSlot
         title="Almuerzo"
@@ -123,6 +133,8 @@ export default function MealPlan() {
         previews={lunchPreviews}
         selectedIdx={selection.lunchIdx}
         onSelect={(i) => setSelection((s) => ({ ...s, lunchIdx: i }))}
+        topping={selection.lunchTopping}
+        onSelectTopping={(key) => setSelection((s) => ({ ...s, lunchTopping: key }))}
       />
 
       <MealCard meal={meals[2]} />
@@ -133,6 +145,8 @@ export default function MealPlan() {
         previews={dinnerPreviews}
         selectedIdx={selection.dinnerIdx}
         onSelect={(i) => setSelection((s) => ({ ...s, dinnerIdx: i }))}
+        topping={selection.dinnerTopping}
+        onSelectTopping={(key) => setSelection((s) => ({ ...s, dinnerTopping: key }))}
         footnote="La cena se ajusta automáticamente a lo que quede del día - por eso no siempre pesa igual."
       />
 
@@ -196,7 +210,7 @@ function previewSlot(person, variant, hypotheticalSelection, mealIndex) {
   return { items: meal.items, totals: round(computeTotals(meal.items)) }
 }
 
-function MealSlot({ title, options, previews, selectedIdx, onSelect, footnote }) {
+function MealSlot({ title, options, previews, selectedIdx, onSelect, topping, onSelectTopping, footnote }) {
   const gridCols = options.length >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'
   return (
     <section className="space-y-2">
@@ -206,36 +220,58 @@ function MealSlot({ title, options, previews, selectedIdx, onSelect, footnote })
           const preview = previews[i]
           const active = selectedIdx === i
           return (
-            <button
+            <div
               key={opt.label}
-              type="button"
-              onClick={() => onSelect(i)}
               className={`flex flex-col items-start rounded-xl border p-4 text-left transition ${
                 active
                   ? 'border-emerald-500 bg-emerald-600/10 ring-1 ring-emerald-500/50'
                   : 'border-zinc-800 bg-zinc-900/50 hover:border-zinc-600'
               }`}
             >
-              <div className="mb-1 flex w-full items-center justify-between gap-2">
-                <span className="text-sm font-medium text-zinc-100">{opt.label}</span>
-                {active && <Check size={16} className="shrink-0 text-emerald-400" />}
-              </div>
-              <p className="mb-2 text-xs text-zinc-500">{opt.note}</p>
-              <ul className="mb-2 space-y-0.5 text-xs text-zinc-400">
-                {preview.items.map((item, j) => (
-                  <li key={j} className="flex justify-between gap-2">
-                    <span>{FOODS[item.food]?.label ?? item.food}</span>
-                    <span className="text-zinc-500">{item.grams} g</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-auto flex w-full flex-wrap gap-2 text-[11px] text-zinc-500">
-                <span className="font-mono text-emerald-400">{preview.totals.kcal} kcal</span>
-                <span>P {preview.totals.protein}g</span>
-                <span>G {preview.totals.fat}g</span>
-                <span>C {preview.totals.carbs}g</span>
-              </div>
-            </button>
+              <button type="button" onClick={() => onSelect(i)} className="flex w-full flex-col items-start text-left">
+                <div className="mb-1 flex w-full items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-zinc-100">{opt.label}</span>
+                  {active && <Check size={16} className="shrink-0 text-emerald-400" />}
+                </div>
+                <p className="mb-2 text-xs text-zinc-500">{opt.note}</p>
+                <ul className="mb-2 space-y-0.5 text-xs text-zinc-400">
+                  {preview.items.map((item, j) => (
+                    <li key={j} className="flex justify-between gap-2">
+                      <span>{FOODS[item.food]?.label ?? item.food}</span>
+                      <span className="text-zinc-500">{item.grams} g</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex w-full flex-wrap gap-2 text-[11px] text-zinc-500">
+                  <span className="font-mono text-emerald-400">{preview.totals.kcal} kcal</span>
+                  <span>P {preview.totals.protein}g</span>
+                  <span>G {preview.totals.fat}g</span>
+                  <span>C {preview.totals.carbs}g</span>
+                </div>
+              </button>
+
+              {active && opt.toppingOptions && (
+                <div className="mt-3 w-full border-t border-zinc-800 pt-2">
+                  <p className="mb-1 text-[11px] text-zinc-600">Acompañamiento:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {opt.toppingOptions.map((t) => (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => onSelectTopping(t.key)}
+                        className={`rounded-full border px-2 py-0.5 text-xs transition ${
+                          topping === t.key
+                            ? 'border-emerald-500 bg-emerald-600/20 text-emerald-300'
+                            : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )
         })}
       </div>

@@ -25,6 +25,7 @@ export const FOODS = {
   banana: { label: 'Plátano', kcal: 89, protein: 1.1, fat: 0.3, carbs: 23 },
   blueberries: { label: 'Frutos rojos', kcal: 57, protein: 0.7, fat: 0.3, carbs: 14 },
   almonds: { label: 'Almendras', kcal: 579, protein: 21, fat: 50, carbs: 22 },
+  peanut_butter: { label: 'Mantequilla de maní (natural, sin azúcar)', kcal: 588, protein: 25, fat: 50, carbs: 20 },
   sweet_potato_cooked: { label: 'Boniato (cocido)', kcal: 90, protein: 2, fat: 0.1, carbs: 21 },
   chickpeas_cooked: { label: 'Garbanzos (cocidos)', kcal: 164, protein: 8.9, fat: 2.6, carbs: 27 },
 }

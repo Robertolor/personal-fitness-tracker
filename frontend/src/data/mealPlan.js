@@ -34,19 +34,30 @@ const SNACKS = {
 const BREAKFAST_SHARE_OF_MAIN = 0.3
 const LUNCH_SHARE_OF_REMAINING = 0.6
 
+// A shared "topping" choice for oats-based options - pick whichever side you
+// actually have that day (plátano, mantequilla de maní, or almendras). Whichever
+// one is picked is added as a flex item, so it scales together with the oats.
+export const OATS_TOPPINGS = [
+  { key: 'banana', label: 'Plátano', food: 'banana', grams: 70 },
+  { key: 'peanut_butter', label: 'Mantequilla de maní', food: 'peanut_butter', grams: 20 },
+  { key: 'almonds', label: 'Almendras', food: 'almonds', grams: 15 },
+]
+
 // role: 'protein' items are the anchor (scaled to hit the protein budget first,
 // since protein is a floor); role: 'flex' items are carb/fat sources (scaled to
 // fill whatever kcal room is left). See scaleTemplateToBudget in lib/nutrition.js.
+// `toppingOptions` (when present) lets you swap one flex item for an alternative
+// - see OATS_TOPPINGS above and how buildAdaptiveDay resolves the chosen one.
 export const BREAKFAST_OPTIONS = [
   {
-    label: 'Overnight oats proteico con plátano',
-    note: 'Prepara la noche anterior: avena + yogur + whey en la nevera, plátano por la mañana.',
+    label: 'Overnight oats proteico',
+    note: 'Prepara la noche anterior: avena + yogur + whey en la nevera. Elige el acompañamiento de abajo.',
     items: [
       { food: 'whey_protein_powder', grams: 30, role: 'protein' },
       { food: 'greek_yogurt_danone_0', grams: 150, role: 'protein' },
       { food: 'oats_dry', grams: 45, role: 'flex' },
-      { food: 'banana', grams: 70, role: 'flex' },
     ],
+    toppingOptions: OATS_TOPPINGS,
   },
   {
     label: 'Tortilla de huevo y claras con aguacate y tostada',
@@ -80,6 +91,15 @@ export const BREAKFAST_OPTIONS = [
       { food: 'arepa_cooked', grams: 70, role: 'flex' },
     ],
   },
+  {
+    label: 'Claras revueltas con avena',
+    note: 'Claras puras revueltas en sartén + avena aparte (con agua o leche desnatada). Elige el acompañamiento de abajo.',
+    items: [
+      { food: 'egg_white', grams: 220, role: 'protein' },
+      { food: 'oats_dry', grams: 40, role: 'flex' },
+    ],
+    toppingOptions: OATS_TOPPINGS,
+  },
 ]
 
 export const LUNCH_OPTIONS = [
@@ -109,6 +129,16 @@ export const LUNCH_OPTIONS = [
     items: [
       { food: 'salmon_cooked', grams: 150, role: 'protein' },
       { food: 'quinoa_cooked', grams: 150, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 200, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Pollo con garbanzos y vegetales',
+    note: 'Pechuga a la plancha con garbanzos (fibra extra) y vegetales, un chorrito de aceite.',
+    items: [
+      { food: 'chicken_breast_cooked', grams: 170, role: 'protein' },
+      { food: 'chickpeas_cooked', grams: 150, role: 'flex' },
+      { food: 'olive_oil', grams: 8, role: 'flex' },
       { food: 'mixed_vegetables_cooked', grams: 200, role: 'flex' },
     ],
   },
@@ -168,12 +198,21 @@ function subtractTotals(a, b) {
   return { kcal: a.kcal - b.kcal, protein: a.protein - b.protein, fat: a.fat - b.fat, carbs: a.carbs - b.carbs }
 }
 
+/** Resolves a template's item list, swapping in the chosen topping (if the
+ * template has `toppingOptions`) as an extra flex item - defaults to the first
+ * topping so a template with modularity still works with no selection made. */
+function resolveTemplateItems(template, toppingKey) {
+  if (!template.toppingOptions?.length) return template.items
+  const chosen = template.toppingOptions.find((t) => t.key === toppingKey) ?? template.toppingOptions[0]
+  return [...template.items, { food: chosen.food, grams: chosen.grams, role: 'flex' }]
+}
+
 /**
  * Builds the full adaptive day: breakfast is sized to a fixed share of the
  * day's budget, then lunch is sized from whatever's left, then dinner absorbs
- * the exact remainder - so switching any one option automatically resizes the
- * others and the day still lands on target. Needs computeTotals/scaleTemplateToBudget
- * from lib/nutrition.js (passed in to avoid a circular import).
+ * the exact remainder - so switching any one option (or its topping) automatically
+ * resizes the others and the day still lands on target. Needs computeTotals/
+ * scaleTemplateToBudget from lib/nutrition.js (passed in to avoid a circular import).
  */
 export function buildAdaptiveDay(personKey, variantKey, selection, { computeTotals, scaleTemplateToBudget }) {
   const target = PEOPLE[personKey]?.targets?.[variantKey]
@@ -185,18 +224,18 @@ export function buildAdaptiveDay(personKey, variantKey, selection, { computeTota
 
   const breakfastTemplate = BREAKFAST_OPTIONS[selection.breakfastIdx] ?? BREAKFAST_OPTIONS[0]
   const breakfastBudget = scaleBudget(mainBudget, BREAKFAST_SHARE_OF_MAIN)
-  const breakfastItems = scaleTemplateToBudget(breakfastTemplate.items, breakfastBudget)
+  const breakfastItems = scaleTemplateToBudget(resolveTemplateItems(breakfastTemplate, selection.breakfastTopping), breakfastBudget)
   const breakfastTotals = computeTotals(breakfastItems)
 
   const afterBreakfast = subtractTotals(mainBudget, breakfastTotals)
   const lunchTemplate = LUNCH_OPTIONS[selection.lunchIdx] ?? LUNCH_OPTIONS[0]
   const lunchBudget = scaleBudget(afterBreakfast, LUNCH_SHARE_OF_REMAINING)
-  const lunchItems = scaleTemplateToBudget(lunchTemplate.items, lunchBudget)
+  const lunchItems = scaleTemplateToBudget(resolveTemplateItems(lunchTemplate, selection.lunchTopping), lunchBudget)
   const lunchTotals = computeTotals(lunchItems)
 
   const dinnerTemplate = DINNER_OPTIONS[selection.dinnerIdx] ?? DINNER_OPTIONS[0]
   const dinnerBudget = subtractTotals(afterBreakfast, lunchTotals)
-  const dinnerItems = scaleTemplateToBudget(dinnerTemplate.items, dinnerBudget)
+  const dinnerItems = scaleTemplateToBudget(resolveTemplateItems(dinnerTemplate, selection.dinnerTopping), dinnerBudget)
 
   return [
     { type: 'Desayuno', note: breakfastTemplate.note, items: breakfastItems },
@@ -236,6 +275,7 @@ export const SHOPPING_LIST_WEEKLY = [
   { item: 'Frutos rojos (congelados vale)', amount: '~700 g' },
   { item: 'Tomate', amount: '~1 kg' },
   { item: 'Almendras', amount: '~250 g' },
+  { item: 'Mantequilla de maní (natural, sin azúcar)', amount: '1 tarro (si la eliges como acompañamiento de las oats)' },
   { item: 'Aceite de oliva', amount: '~200 ml' },
   { item: 'Vegetales variados (brócoli, calabacín, pimiento, judía verde, espinaca, coliflor, espárragos)', amount: 'Según elijas, ~3-4 kg combinados' },
 ]
