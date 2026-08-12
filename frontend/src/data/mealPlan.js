@@ -1,12 +1,13 @@
-/** 30-day rotating menu for the "Captain America" cut month - built from the
- * user's preferred staples (huevo, pollo, arroz, vegetales, yogur griego Danone,
- * proteína en polvo, overnight oats) plus a few simple Consum-friendly additions
- * (boniato, garbanzos, almendras, aceite de oliva) for variety and fiber.
- * No shrimp anywhere. Portions are cooked weights.
+/** Dynamic menu for the "Captain America" cut month - 3 interchangeable options
+ * for breakfast, 3 for lunch, 3 for dinner, built from the user's preferred
+ * staples (huevo, pollo, arroz, vegetales, yogur griego Danone, proteína en
+ * polvo, overnight oats) plus a few Consum-friendly additions for variety
+ * (pavo, salmón, atún, aguacate, pan integral, quinoa) and fiber (garbanzos,
+ * boniato). No shrimp anywhere. Portions are cooked weights.
  *
- * Real day-to-day totals will vary slightly (normal in real nutrition, not a bug) -
- * what matters is the weekly average landing near the target, tracked via the
- * 10-day calibration checkpoints (see Settings + Progress dashboard).
+ * The three options in each slot aren't independent fixed recipes - picking one
+ * resizes it (and every option in the *next* slot) to fit whatever's left of
+ * your daily target. See `buildAdaptiveDay` below for the actual logic.
  */
 
 export const PEOPLE = {
@@ -14,76 +15,194 @@ export const PEOPLE = {
   esposa: { label: 'Esposa', targets: { fixed: { kcal: 1500, protein: 110, fat: 45, carbs: 165 } } },
 }
 
-/** 7-day rotation: which carb source lunch uses (variety + fiber), and a vegetable
- * suggestion (swap freely - vegetable choice barely moves the macros). */
-export const WEEK_TEMPLATE = [
-  { day: 1, label: 'Lunes', lunchCarb: 'arroz', vegetable: 'Brócoli y zanahoria' },
-  { day: 2, label: 'Martes', lunchCarb: 'boniato', vegetable: 'Judía verde y pimiento' },
-  { day: 3, label: 'Miércoles', lunchCarb: 'garbanzos', vegetable: 'Calabacín y espinaca' },
-  { day: 4, label: 'Jueves', lunchCarb: 'arroz', vegetable: 'Coliflor y zanahoria' },
-  { day: 5, label: 'Viernes', lunchCarb: 'arroz', vegetable: 'Ensalada mixta' },
-  { day: 6, label: 'Sábado', lunchCarb: 'boniato', vegetable: 'Espárragos y pimiento' },
-  { day: 7, label: 'Domingo', lunchCarb: 'garbanzos', vegetable: 'Lo que haya en la nevera' },
-]
-
-const LUNCH_CARB_FOOD = { arroz: 'white_rice_cooked', boniato: 'sweet_potato_cooked', garbanzos: 'chickpeas_cooked' }
-
-/** Fixed portions per person/variant. `lunchCarbGrams` keyed by carb type so
- * the weekly rotation above just plugs into these numbers. */
-const PORTIONS = {
+// Fixed, not resized - a small consistent snack, same idea every day. Its totals
+// are subtracted from the day target before the 3 adaptive meals split the rest.
+const SNACKS = {
   roberto: {
-    maintain: {
-      breakfast: [{ food: 'oats_dry', grams: 50 }, { food: 'whey_protein_powder', grams: 30 }, { food: 'greek_yogurt_danone_0', grams: 200 }, { food: 'banana', grams: 80 }],
-      lunchProtein: [{ food: 'chicken_breast_cooked', grams: 200 }, { food: 'olive_oil', grams: 12 }],
-      lunchCarbGrams: { arroz: 150, boniato: 180, garbanzos: 150 },
-      lunchVeg: 200,
-      snack: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 25 }],
-      dinner: [{ food: 'egg_whole', grams: 100 }, { food: 'chicken_breast_cooked', grams: 80 }, { food: 'sweet_potato_cooked', grams: 100 }],
-      dinnerVeg: 250,
-    },
-    reduced: {
-      breakfast: [{ food: 'oats_dry', grams: 40 }, { food: 'whey_protein_powder', grams: 30 }, { food: 'greek_yogurt_danone_0', grams: 200 }, { food: 'banana', grams: 60 }],
-      lunchProtein: [{ food: 'chicken_breast_cooked', grams: 200 }, { food: 'olive_oil', grams: 10 }],
-      lunchCarbGrams: { arroz: 100, boniato: 130, garbanzos: 110 },
-      lunchVeg: 200,
-      snack: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 15 }],
-      dinner: [{ food: 'egg_whole', grams: 100 }, { food: 'chicken_breast_cooked', grams: 80 }, { food: 'sweet_potato_cooked', grams: 70 }],
-      dinnerVeg: 250,
-    },
+    maintain: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 25 }],
+    reduced: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 15 }],
   },
   esposa: {
-    fixed: {
-      breakfast: [{ food: 'oats_dry', grams: 35 }, { food: 'whey_protein_powder', grams: 20 }, { food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'banana', grams: 60 }],
-      lunchProtein: [{ food: 'chicken_breast_cooked', grams: 140 }, { food: 'olive_oil', grams: 13 }],
-      lunchCarbGrams: { arroz: 150, boniato: 165, garbanzos: 130 },
-      lunchVeg: 200,
-      snack: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 10 }],
-      dinner: [{ food: 'egg_whole', grams: 100 }, { food: 'chicken_breast_cooked', grams: 60 }, { food: 'sweet_potato_cooked', grams: 100 }],
-      dinnerVeg: 200,
-    },
+    fixed: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 10 }],
   },
 }
 
-/** Builds the 4 meals for a given person + variant + day-of-week template. */
-export function buildMealsForDay(personKey, variantKey, dayTemplate) {
-  const p = PORTIONS[personKey]?.[variantKey]
-  if (!p) return []
-  const lunchCarbFood = LUNCH_CARB_FOOD[dayTemplate.lunchCarb]
-  const lunchCarbGrams = p.lunchCarbGrams[dayTemplate.lunchCarb]
+// How the day's budget (after snack) is split across meals. Breakfast gets a
+// fixed share of the "main meals" budget; of what's left, lunch gets its share
+// and dinner absorbs the exact remainder (so the day always lands on target,
+// no matter which 3 options you end up combining).
+const BREAKFAST_SHARE_OF_MAIN = 0.3
+const LUNCH_SHARE_OF_REMAINING = 0.6
+
+// role: 'protein' items are the anchor (scaled to hit the protein budget first,
+// since protein is a floor); role: 'flex' items are carb/fat sources (scaled to
+// fill whatever kcal room is left). See scaleTemplateToBudget in lib/nutrition.js.
+export const BREAKFAST_OPTIONS = [
+  {
+    label: 'Overnight oats proteico con plátano',
+    note: 'Prepara la noche anterior: avena + yogur + whey en la nevera, plátano por la mañana.',
+    items: [
+      { food: 'whey_protein_powder', grams: 30, role: 'protein' },
+      { food: 'greek_yogurt_danone_0', grams: 150, role: 'protein' },
+      { food: 'oats_dry', grams: 45, role: 'flex' },
+      { food: 'banana', grams: 70, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Tortilla de huevo y claras con aguacate y tostada',
+    note: 'Huevo + claras a la plancha, medio aguacate y tomate, tostada integral.',
+    items: [
+      { food: 'egg_whole', grams: 100, role: 'protein' },
+      { food: 'egg_white', grams: 80, role: 'protein' },
+      { food: 'wholegrain_bread', grams: 40, role: 'flex' },
+      { food: 'avocado', grams: 60, role: 'flex' },
+      { food: 'tomato', grams: 80, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Bowl de queso fresco batido con frutos rojos',
+    note: 'Queso fresco batido + un toque de whey, frutos rojos y almendras por encima.',
+    items: [
+      { food: 'queso_fresco_batido_0', grams: 200, role: 'protein' },
+      { food: 'whey_protein_powder', grams: 15, role: 'protein' },
+      { food: 'blueberries', grams: 100, role: 'flex' },
+      { food: 'oats_dry', grams: 20, role: 'flex' },
+      { food: 'almonds', grams: 15, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Arepa (o pan) con huevo y mozzarella',
+    note: 'Arepa asada (o pan integral si no tienes harina de maíz) con huevo, clara y mozzarella derretida.',
+    items: [
+      { food: 'egg_whole', grams: 60, role: 'protein' },
+      { food: 'egg_white', grams: 150, role: 'protein' },
+      { food: 'mozzarella_cheese', grams: 25, role: 'protein' },
+      { food: 'arepa_cooked', grams: 70, role: 'flex' },
+    ],
+  },
+]
+
+export const LUNCH_OPTIONS = [
+  {
+    label: 'Pollo con arroz y vegetales',
+    note: 'El clásico: pechuga a la plancha, arroz blanco, vegetales al vapor con un chorrito de aceite.',
+    items: [
+      { food: 'chicken_breast_cooked', grams: 180, role: 'protein' },
+      { food: 'white_rice_cooked', grams: 150, role: 'flex' },
+      { food: 'olive_oil', grams: 10, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 200, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Pavo con boniato asado y ensalada',
+    note: 'Pechuga de pavo, boniato al horno, ensalada o vegetales variados.',
+    items: [
+      { food: 'turkey_breast_cooked', grams: 180, role: 'protein' },
+      { food: 'sweet_potato_cooked', grams: 170, role: 'flex' },
+      { food: 'olive_oil', grams: 10, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 200, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Salmón con quinoa y vegetales',
+    note: 'Salmón a la plancha u horno (viene con su propia grasa buena, omega-3 extra), quinoa y vegetales.',
+    items: [
+      { food: 'salmon_cooked', grams: 150, role: 'protein' },
+      { food: 'quinoa_cooked', grams: 150, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 200, role: 'flex' },
+    ],
+  },
+]
+
+export const DINNER_OPTIONS = [
+  {
+    label: 'Huevos revueltos con pollo y boniato',
+    note: 'Cena ligera: huevo revuelto con un poco de pollo, boniato y vegetales.',
+    items: [
+      { food: 'egg_whole', grams: 100, role: 'protein' },
+      { food: 'chicken_breast_cooked', grams: 80, role: 'protein' },
+      { food: 'sweet_potato_cooked', grams: 90, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 200, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Atún con garbanzos y ensalada',
+    note: 'Atún al natural, garbanzos, ensalada o vegetales con un toque de aceite.',
+    items: [
+      { food: 'tuna_canned_water', grams: 150, role: 'protein' },
+      { food: 'egg_white', grams: 40, role: 'protein' },
+      { food: 'chickpeas_cooked', grams: 120, role: 'flex' },
+      { food: 'olive_oil', grams: 6, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 200, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Claras con queso fresco y tostada',
+    note: 'Claras a la plancha, queso fresco batido, tostada integral y tomate.',
+    items: [
+      { food: 'egg_white', grams: 150, role: 'protein' },
+      { food: 'queso_fresco_batido_0', grams: 100, role: 'protein' },
+      { food: 'wholegrain_bread', grams: 30, role: 'flex' },
+      { food: 'tomato', grams: 100, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 150, role: 'flex' },
+    ],
+  },
+  {
+    label: 'Arepa (o pan) con huevo y mozzarella',
+    note: 'Igual que en el desayuno pero en versión cena: arepa asada (o pan integral) con huevo, clara, mozzarella derretida y vegetales al lado.',
+    items: [
+      { food: 'egg_whole', grams: 50, role: 'protein' },
+      { food: 'egg_white', grams: 130, role: 'protein' },
+      { food: 'mozzarella_cheese', grams: 20, role: 'protein' },
+      { food: 'arepa_cooked', grams: 50, role: 'flex' },
+      { food: 'mixed_vegetables_cooked', grams: 150, role: 'flex' },
+    ],
+  },
+]
+
+function scaleBudget(target, factor) {
+  return { kcal: target.kcal * factor, protein: target.protein * factor, fat: target.fat * factor, carbs: target.carbs * factor }
+}
+
+function subtractTotals(a, b) {
+  return { kcal: a.kcal - b.kcal, protein: a.protein - b.protein, fat: a.fat - b.fat, carbs: a.carbs - b.carbs }
+}
+
+/**
+ * Builds the full adaptive day: breakfast is sized to a fixed share of the
+ * day's budget, then lunch is sized from whatever's left, then dinner absorbs
+ * the exact remainder - so switching any one option automatically resizes the
+ * others and the day still lands on target. Needs computeTotals/scaleTemplateToBudget
+ * from lib/nutrition.js (passed in to avoid a circular import).
+ */
+export function buildAdaptiveDay(personKey, variantKey, selection, { computeTotals, scaleTemplateToBudget }) {
+  const target = PEOPLE[personKey]?.targets?.[variantKey]
+  const snackItems = SNACKS[personKey]?.[variantKey]
+  if (!target || !snackItems) return null
+
+  const snackTotals = computeTotals(snackItems)
+  const mainBudget = subtractTotals(target, snackTotals)
+
+  const breakfastTemplate = BREAKFAST_OPTIONS[selection.breakfastIdx] ?? BREAKFAST_OPTIONS[0]
+  const breakfastBudget = scaleBudget(mainBudget, BREAKFAST_SHARE_OF_MAIN)
+  const breakfastItems = scaleTemplateToBudget(breakfastTemplate.items, breakfastBudget)
+  const breakfastTotals = computeTotals(breakfastItems)
+
+  const afterBreakfast = subtractTotals(mainBudget, breakfastTotals)
+  const lunchTemplate = LUNCH_OPTIONS[selection.lunchIdx] ?? LUNCH_OPTIONS[0]
+  const lunchBudget = scaleBudget(afterBreakfast, LUNCH_SHARE_OF_REMAINING)
+  const lunchItems = scaleTemplateToBudget(lunchTemplate.items, lunchBudget)
+  const lunchTotals = computeTotals(lunchItems)
+
+  const dinnerTemplate = DINNER_OPTIONS[selection.dinnerIdx] ?? DINNER_OPTIONS[0]
+  const dinnerBudget = subtractTotals(afterBreakfast, lunchTotals)
+  const dinnerItems = scaleTemplateToBudget(dinnerTemplate.items, dinnerBudget)
 
   return [
-    { type: 'Desayuno', note: 'Overnight oats (prepara la noche anterior)', items: p.breakfast },
-    {
-      type: 'Comida',
-      note: `Pollo con ${dayTemplate.lunchCarb} y ${dayTemplate.vegetable.toLowerCase()}`,
-      items: [...p.lunchProtein, { food: lunchCarbFood, grams: lunchCarbGrams }, { food: 'mixed_vegetables_cooked', grams: p.lunchVeg }],
-    },
-    { type: 'Merienda', note: 'Yogur griego + almendras', items: p.snack },
-    {
-      type: 'Cena',
-      note: `Huevo y pollo con ${dayTemplate.vegetable.toLowerCase()} y boniato`,
-      items: [...p.dinner, { food: 'mixed_vegetables_cooked', grams: p.dinnerVeg }],
-    },
+    { type: 'Desayuno', note: breakfastTemplate.note, items: breakfastItems },
+    { type: 'Almuerzo', note: lunchTemplate.note, items: lunchItems },
+    { type: 'Merienda', note: 'Yogur griego + almendras', items: snackItems },
+    { type: 'Cena', note: dinnerTemplate.note, items: dinnerItems },
   ]
 }
 
@@ -95,18 +214,30 @@ export const SUPPLEMENTS = [
 ]
 
 export const SHOPPING_LIST_WEEKLY = [
-  { item: 'Pechuga de pollo', amount: '~2.5 kg (ambos, 7 días)' },
-  { item: 'Huevos', amount: '14 (2/día, ambos)' },
-  { item: 'Arroz blanco', amount: '~700 g en crudo (días de arroz)' },
-  { item: 'Boniato', amount: '~1.2 kg (días de boniato + cena)' },
-  { item: 'Garbanzos cocidos', amount: '~600 g (días de garbanzos)' },
-  { item: 'Avena', amount: '~600 g' },
+  { item: 'Pechuga de pollo', amount: '~1.5-2 kg (según cuántos días eliges pollo)' },
+  { item: 'Pechuga de pavo', amount: '~0.8 kg (si eliges pavo en almuerzo)' },
+  { item: 'Salmón fresco', amount: '~0.6 kg (si eliges salmón en almuerzo)' },
+  { item: 'Atún al natural (lata)', amount: '~4-5 latas (si eliges atún en cena)' },
+  { item: 'Huevos', amount: '~14-18 (según opciones elegidas)' },
+  { item: 'Claras de huevo (cartón o separadas)', amount: '~1 L (para las opciones con clara)' },
   { item: 'Yogur griego Danone 0%', amount: '~14 unidades de 250 g' },
+  { item: 'Queso fresco batido 0%', amount: '~4-5 tarrinas (si eliges esas opciones)' },
   { item: 'Proteína en polvo (whey)', amount: '~350 g (bote)' },
-  { item: 'Plátano', amount: '14 unidades' },
+  { item: 'Arroz blanco', amount: '~500 g en crudo' },
+  { item: 'Quinoa', amount: '~300 g en crudo (si eliges salmón+quinoa)' },
+  { item: 'Boniato', amount: '~1 kg' },
+  { item: 'Garbanzos cocidos', amount: '~400 g' },
+  { item: 'Avena', amount: '~400 g' },
+  { item: 'Pan integral', amount: '1 barra/paquete' },
+  { item: 'Harina de maíz precocida (para arepas)', amount: '1 paquete (si eliges esa opción)' },
+  { item: 'Queso mozzarella', amount: '1 pieza/bolsa (~200 g, si eliges esa opción)' },
+  { item: 'Aguacate', amount: '2-3 unidades' },
+  { item: 'Plátano', amount: '7-10 unidades' },
+  { item: 'Frutos rojos (congelados vale)', amount: '~700 g' },
+  { item: 'Tomate', amount: '~1 kg' },
   { item: 'Almendras', amount: '~250 g' },
   { item: 'Aceite de oliva', amount: '~200 ml' },
-  { item: 'Vegetales variados (brócoli, calabacín, pimiento, judía verde, espinaca, coliflor, espárragos)', amount: 'Según lista del día, ~4-5 kg combinados' },
+  { item: 'Vegetales variados (brócoli, calabacín, pimiento, judía verde, espinaca, coliflor, espárragos)', amount: 'Según elijas, ~3-4 kg combinados' },
 ]
 
 export const TRIP_GUIDE = {

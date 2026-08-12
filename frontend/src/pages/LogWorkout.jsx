@@ -50,6 +50,9 @@ export default function LogWorkout() {
   const [exerciseSetCounts, setExerciseSetCounts] = useState({})
   const [lastSetsByKey, setLastSetsByKey] = useState({})
   const [lastSessionDate, setLastSessionDate] = useState(null)
+  // Per-exercise equipment swap for today only (e.g. machine occupied) - doesn't
+  // touch the routine template, just relabels this session's sets to the alternative.
+  const [nameOverrides, setNameOverrides] = useState({})
   const [loading, setLoading] = useState(true)
   const [initLoading, setInitLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -119,6 +122,7 @@ export default function LogWorkout() {
 
   const loadWorkout = async () => {
     setLoading(true)
+    setNameOverrides({})
     const { data: routineData } = await supabase
       .from('routine_templates')
       .select('*, routine_exercises(*)')
@@ -160,8 +164,13 @@ export default function LogWorkout() {
 
     const initial = {}
     const counts = {}
+    const restoredOverrides = {}
     routineData?.routine_exercises?.forEach((ex) => {
       const existing = (sessionData?.workout_sets ?? []).filter((s) => s.exercise_id === ex.id || s.exercise_name === ex.name)
+      // If an earlier save today used an alternative name (equipment swap), keep using it.
+      const savedAltName = existing.find((s) => s.exercise_name && s.exercise_name !== ex.name)?.exercise_name
+      const activeName = savedAltName || ex.name
+      if (savedAltName) restoredOverrides[ex.id] = savedAltName
       const setCount = getExerciseSetCount(ex.target_sets, existing)
       counts[ex.id] = setCount
       for (let i = 1; i <= setCount; i++) {
@@ -170,7 +179,7 @@ export default function LogWorkout() {
         const last = lastByKey[`${ex.name}-${i}`]
         initial[key] = {
           exercise_id: ex.id,
-          exercise_name: ex.name,
+          exercise_name: activeName,
           set_number: i,
           weight_kg: found?.weight_kg ?? last?.weight_kg ?? '',
           reps: found?.reps ?? last?.reps ?? '',
@@ -181,11 +190,34 @@ export default function LogWorkout() {
     })
     setSets(initial)
     setExerciseSetCounts(counts)
+    setNameOverrides(restoredOverrides)
     setLoading(false)
   }
 
   const updateSet = (key, field, value) => {
     setSets((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }))
+  }
+
+  const getActiveName = (ex) => nameOverrides[ex.id] || ex.name
+
+  const setAlternative = (ex, altName) => {
+    const isActive = nameOverrides[ex.id] === altName
+    const newName = isActive ? ex.name : altName
+    setNameOverrides((prev) => {
+      const next = { ...prev }
+      if (isActive) delete next[ex.id]
+      else next[ex.id] = altName
+      return next
+    })
+    setSets((prev) => {
+      const next = { ...prev }
+      Object.keys(next).forEach((key) => {
+        if (next[key].exercise_id === ex.id) {
+          next[key] = { ...next[key], exercise_name: newName }
+        }
+      })
+      return next
+    })
   }
 
   const addSet = (ex) => {
@@ -197,7 +229,7 @@ export default function LogWorkout() {
       ...prev,
       [key]: {
         exercise_id: ex.id,
-        exercise_name: ex.name,
+        exercise_name: getActiveName(ex),
         set_number: nextNum,
         weight_kg: '',
         reps: '',
@@ -404,11 +436,33 @@ export default function LogWorkout() {
             return (
               <section key={ex.id} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                 <div className="mb-3">
-                  <h2 className="font-semibold">{ex.name}</h2>
+                  <h2 className="font-semibold">
+                    {getActiveName(ex)}
+                    {nameOverrides[ex.id] && <span className="ml-2 text-xs font-normal text-amber-400/80">(alt. de {ex.name})</span>}
+                  </h2>
                   <p className="text-xs text-zinc-500">
                     {ex.target_sets} sets · {ex.rep_range} · {ex.primary_muscle}
                   </p>
                   {ex.notes && <p className="mt-1 text-xs text-zinc-600">{ex.notes}</p>}
+                  {ex.alternatives?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-zinc-600">¿Máquina ocupada?</span>
+                      {ex.alternatives.map((alt) => (
+                        <button
+                          key={alt}
+                          type="button"
+                          onClick={() => setAlternative(ex, alt)}
+                          className={`rounded-full border px-2 py-0.5 text-xs transition ${
+                            nameOverrides[ex.id] === alt
+                              ? 'border-emerald-500 bg-emerald-600/20 text-emerald-300'
+                              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+                          }`}
+                        >
+                          {alt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {lastSetsForEx.length > 0 && (
                     <p className="mt-1.5 text-xs text-emerald-400/80">
                       Last time{lastSessionDate ? ` (${format(parseISO(lastSessionDate), 'MMM d')})` : ''}: {lastSetsForEx

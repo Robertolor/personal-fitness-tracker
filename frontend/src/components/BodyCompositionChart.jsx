@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { format, parseISO } from 'date-fns'
-import { rollingAverage } from '../lib/bodyComp'
+import { rollingAverage, navyBodyFatPct } from '../lib/bodyComp'
 
 const OVERLAYS = [
   { key: 'weight', label: 'Weight (kg)', color: '#34d399', dataKey: 'weight_kg' },
@@ -19,17 +19,20 @@ const OVERLAYS = [
   { key: 'avg7', label: '7-day avg (weight/waist)', color: '#facc15', dataKey: null },
 ]
 
-export default function BodyCompositionChart({ checkins = [], measurements = [] }) {
+export default function BodyCompositionChart({ checkins = [], measurements = [], heightCm = null }) {
   const [visible, setVisible] = useState({ weight: true, bf: true, waist: true, avg7: true })
 
   const merged = {}
   checkins.forEach((c) => {
     const d = c.checkin_date
-    merged[d] = { ...merged[d], date: d, weight_kg: c.weight_kg, body_fat_pct: c.body_fat_pct }
+    // Kept as a fallback for any older manually-typed entries; new dates rely on the
+    // Navy-method estimate below so nobody has to report body fat % by hand anymore.
+    merged[d] = { ...merged[d], date: d, weight_kg: c.weight_kg, body_fat_pct: c.body_fat_pct ?? null }
   })
   measurements.forEach((m) => {
     const d = m.measured_date
-    merged[d] = { ...merged[d], date: d, waist_cm: m.waist_cm }
+    const bf = navyBodyFatPct({ gender: 'male', heightCm, waistCm: m.waist_cm, neckCm: m.neck_cm })
+    merged[d] = { ...merged[d], date: d, waist_cm: m.waist_cm, body_fat_pct: bf ?? merged[d]?.body_fat_pct ?? null }
   })
 
   const weightAvg = rollingAverage(

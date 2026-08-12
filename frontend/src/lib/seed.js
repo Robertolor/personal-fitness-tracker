@@ -31,6 +31,7 @@ export async function seedUserData(userId) {
       primary_muscle: ex.primaryMuscle,
       notes: ex.notes,
       sort_order: i,
+      alternatives: ex.alternatives ?? [],
     }))
 
     const { error: exError } = await supabase.from('routine_exercises').insert(exercises)

@@ -6,18 +6,20 @@ import { formatDateISO } from '../lib/schedule'
 import { ScaleStepper } from '../components/NumberStepper'
 import { navyBodyFatPct } from '../lib/bodyComp'
 
+// Wellness/adherence scales default to null (unset), not a fake "3" - saving should
+// only ever record what you actually tapped, never a silent middle-of-the-road guess.
 const emptyCheckin = {
   weight_kg: '',
   body_fat_pct: '',
-  sleep: 3,
-  energy: 3,
-  hunger: 3,
-  stress: 3,
-  muscle_fatigue: 3,
+  sleep: null,
+  energy: null,
+  hunger: null,
+  stress: null,
+  muscle_fatigue: null,
   steps: '',
   calories_consumed: '',
   protein_g: '',
-  nutrition_adherence: 3,
+  nutrition_adherence: null,
   workout_completed: false,
   swimming_completed: false,
   notes: '',
@@ -40,6 +42,9 @@ export default function CheckIn() {
   const todayISO = formatDateISO(new Date())
   const [checkin, setCheckin] = useState(emptyCheckin)
   const [measurement, setMeasurement] = useState(emptyMeasurement)
+  const [latestMeasurement, setLatestMeasurement] = useState(null)
+  const [offPlan, setOffPlan] = useState(false)
+  const [showExtras, setShowExtras] = useState(false)
   const [tab, setTab] = useState('daily')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -49,7 +54,8 @@ export default function CheckIn() {
     Promise.all([
       supabase.from('daily_checkins').select('*').eq('user_id', user.id).eq('checkin_date', todayISO).maybeSingle(),
       supabase.from('body_measurements').select('*').eq('user_id', user.id).eq('measured_date', todayISO).maybeSingle(),
-    ]).then(([cRes, mRes]) => {
+      supabase.from('body_measurements').select('*').eq('user_id', user.id).order('measured_date', { ascending: false }).limit(1).maybeSingle(),
+    ]).then(([cRes, mRes, latestRes]) => {
       if (cRes.data) {
         setCheckin({
           ...emptyCheckin,
@@ -60,6 +66,7 @@ export default function CheckIn() {
           calories_consumed: cRes.data.calories_consumed ?? '',
           protein_g: cRes.data.protein_g ?? '',
         })
+        if (cRes.data.calories_consumed != null || cRes.data.protein_g != null) setOffPlan(true)
       }
       if (mRes.data) {
         setMeasurement({
@@ -75,8 +82,27 @@ export default function CheckIn() {
           neck_cm: mRes.data.neck_cm ?? '',
         })
       }
+      setLatestMeasurement(latestRes.data ?? null)
     })
   }, [user, todayISO])
+
+  // Weight is the one thing worth logging almost every day - its own save action
+  // means you're never forced to also touch sleep/energy/nutrition/etc. to save it.
+  const saveWeightOnly = async () => {
+    if (checkin.weight_kg === '') return
+    setSaving(true)
+    setMessage('')
+    try {
+      const row = { user_id: user.id, checkin_date: todayISO, weight_kg: Number(checkin.weight_kg) }
+      const { error } = await supabase.from('daily_checkins').upsert(row, { onConflict: 'user_id,checkin_date' })
+      if (error) throw error
+      setMessage('Weight saved.')
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const saveCheckin = async () => {
     setSaving(true)
@@ -97,8 +123,8 @@ export default function CheckIn() {
         weight_kg: checkin.weight_kg !== '' ? Number(checkin.weight_kg) : null,
         body_fat_pct: checkin.body_fat_pct !== '' ? Number(checkin.body_fat_pct) : null,
         steps: checkin.steps !== '' ? Number(checkin.steps) : null,
-        calories_consumed: checkin.calories_consumed !== '' ? Number(checkin.calories_consumed) : null,
-        protein_g: checkin.protein_g !== '' ? Number(checkin.protein_g) : null,
+        calories_consumed: offPlan && checkin.calories_consumed !== '' ? Number(checkin.calories_consumed) : null,
+        protein_g: offPlan && checkin.protein_g !== '' ? Number(checkin.protein_g) : null,
       }
       const { error } = await supabase.from('daily_checkins').upsert(row, { onConflict: 'user_id,checkin_date' })
       if (error) throw error
@@ -139,12 +165,22 @@ export default function CheckIn() {
   }
 
   const calorieTarget = settings?.calorie_target ?? 1900
+  const heightCm = settings?.height_cm ? Number(settings.height_cm) : null
   const navyEstimate = navyBodyFatPct({
     gender: 'male',
-    heightCm: settings?.height_cm ? Number(settings.height_cm) : null,
+    heightCm,
     waistCm: measurement.waist_cm !== '' ? Number(measurement.waist_cm) : null,
     neckCm: measurement.neck_cm !== '' ? Number(measurement.neck_cm) : null,
   })
+  // Fallback to the most recent logged measurement so this reads even on days
+  // you didn't measure waist/neck today - no need to ever type a body-fat % by hand.
+  const navyLatestEstimate = navyEstimate ?? navyBodyFatPct({
+    gender: 'male',
+    heightCm,
+    waistCm: latestMeasurement?.waist_cm ?? null,
+    neckCm: latestMeasurement?.neck_cm ?? null,
+  })
+  const navyLatestDate = navyEstimate ? todayISO : latestMeasurement?.measured_date
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -169,28 +205,88 @@ export default function CheckIn() {
       </div>
 
       {tab === 'daily' ? (
-        <div className="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Weight (kg)" value={checkin.weight_kg} onChange={(v) => setCheckin({ ...checkin, weight_kg: v })} type="number" step="0.1" />
-            <Field label="Body fat %" value={checkin.body_fat_pct} onChange={(v) => setCheckin({ ...checkin, body_fat_pct: v })} type="number" step="0.1" />
-            <Field label="Steps" value={checkin.steps} onChange={(v) => setCheckin({ ...checkin, steps: v })} type="number" />
-            <Field label="Calories consumed" value={checkin.calories_consumed} onChange={(v) => setCheckin({ ...checkin, calories_consumed: v })} type="number" />
-            <Field label="Protein (g)" value={checkin.protein_g} onChange={(v) => setCheckin({ ...checkin, protein_g: v })} type="number" />
+        <div className="space-y-5">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+            <label className="mb-1 block text-xs text-zinc-500">Weight (kg)</label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.1"
+                value={checkin.weight_kg}
+                onChange={(e) => setCheckin({ ...checkin, weight_kg: e.target.value })}
+                placeholder="e.g. 79.2"
+                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-lg outline-none focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                disabled={saving || checkin.weight_kg === ''}
+                onClick={saveWeightOnly}
+                className="rounded-lg bg-emerald-600 px-5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              This is the only thing worth logging daily. Everything below is optional -
+              you don't need to touch it to save your weight.
+            </p>
+
+            {navyLatestEstimate != null ? (
+              <p className="mt-3 rounded-lg bg-emerald-950/30 px-3 py-2 text-xs text-emerald-300">
+                Body fat (Navy method, auto): <strong>{navyLatestEstimate}%</strong>
+                {navyLatestDate && navyLatestDate !== todayISO ? ` · from ${navyLatestDate}` : ''}
+                {' '}— no need to type this in, it's computed from your waist/neck in the Measurements tab.
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-zinc-600">
+                Log waist + neck once in the Measurements tab (and your height in Settings) to get body-fat % automatically here - no manual entry needed.
+              </p>
+            )}
           </div>
 
-          <ScaleStepper label="Sleep" value={checkin.sleep} onChange={(v) => setCheckin({ ...checkin, sleep: v })} lowLabel="Terrible" highLabel="Excellent" />
-          <ScaleStepper label="Energy" value={checkin.energy} onChange={(v) => setCheckin({ ...checkin, energy: v })} lowLabel="Dragging" highLabel="Very high" />
-          <ScaleStepper label="Hunger" value={checkin.hunger} onChange={(v) => setCheckin({ ...checkin, hunger: v })} lowLabel="None" highLabel="Brutal" />
-          <ScaleStepper label="Stress" value={checkin.stress} onChange={(v) => setCheckin({ ...checkin, stress: v })} lowLabel="Relaxed" highLabel="Very high" />
-          <ScaleStepper label="Muscle fatigue" value={checkin.muscle_fatigue} onChange={(v) => setCheckin({ ...checkin, muscle_fatigue: v })} lowLabel="Fresh" highLabel="Destroyed" />
-          <ScaleStepper label="Nutrition adherence" value={checkin.nutrition_adherence} onChange={(v) => setCheckin({ ...checkin, nutrition_adherence: v })} lowLabel="Off plan" highLabel="Perfect" />
-
-          <div className="flex flex-wrap gap-4">
-            <Toggle label="Workout done" checked={checkin.workout_completed} onChange={(v) => setCheckin({ ...checkin, workout_completed: v })} />
-            <Toggle label="Cardio done" checked={checkin.swimming_completed} onChange={(v) => setCheckin({ ...checkin, swimming_completed: v })} />
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium">Nutrition today</p>
+            </div>
+            <Toggle
+              label="I stayed off-plan today (log what I actually ate)"
+              checked={offPlan}
+              onChange={setOffPlan}
+            />
+            {!offPlan ? (
+              <p className="mt-2 text-xs text-zinc-500">
+                Following the plan exactly = nothing to log here. Only flip this on for the days you deviated.
+              </p>
+            ) : (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <Field label="Calories consumed" value={checkin.calories_consumed} onChange={(v) => setCheckin({ ...checkin, calories_consumed: v })} type="number" />
+                <Field label="Protein (g)" value={checkin.protein_g} onChange={(v) => setCheckin({ ...checkin, protein_g: v })} type="number" />
+              </div>
+            )}
           </div>
 
-          <Field label="Notes" value={checkin.notes} onChange={(v) => setCheckin({ ...checkin, notes: v })} multiline />
+          <details className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5" open={showExtras} onToggle={(e) => setShowExtras(e.target.open)}>
+            <summary className="cursor-pointer text-sm font-medium text-zinc-300">
+              More (optional) - wellness, workout/cardio, notes
+            </summary>
+            <div className="mt-4 space-y-5">
+              <Field label="Steps (optional)" value={checkin.steps} onChange={(v) => setCheckin({ ...checkin, steps: v })} type="number" />
+
+              <ScaleStepper label="Sleep (optional)" value={checkin.sleep} onChange={(v) => setCheckin({ ...checkin, sleep: v })} lowLabel="Terrible" highLabel="Excellent" />
+              <ScaleStepper label="Energy (optional)" value={checkin.energy} onChange={(v) => setCheckin({ ...checkin, energy: v })} lowLabel="Dragging" highLabel="Very high" />
+              <ScaleStepper label="Hunger (optional)" value={checkin.hunger} onChange={(v) => setCheckin({ ...checkin, hunger: v })} lowLabel="None" highLabel="Brutal" />
+              <ScaleStepper label="Stress (optional)" value={checkin.stress} onChange={(v) => setCheckin({ ...checkin, stress: v })} lowLabel="Relaxed" highLabel="Very high" />
+              <ScaleStepper label="Muscle fatigue (optional)" value={checkin.muscle_fatigue} onChange={(v) => setCheckin({ ...checkin, muscle_fatigue: v })} lowLabel="Fresh" highLabel="Destroyed" />
+              <ScaleStepper label="Nutrition adherence (optional)" value={checkin.nutrition_adherence} onChange={(v) => setCheckin({ ...checkin, nutrition_adherence: v })} lowLabel="Off plan" highLabel="Perfect" />
+
+              <div className="flex flex-wrap gap-4">
+                <Toggle label="Workout done" checked={checkin.workout_completed} onChange={(v) => setCheckin({ ...checkin, workout_completed: v })} />
+                <Toggle label="Cardio done" checked={checkin.swimming_completed} onChange={(v) => setCheckin({ ...checkin, swimming_completed: v })} />
+              </div>
+
+              <Field label="Notes" value={checkin.notes} onChange={(v) => setCheckin({ ...checkin, notes: v })} multiline />
+            </div>
+          </details>
 
           <button type="button" disabled={saving} onClick={saveCheckin} className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50">
             Save check-in

@@ -104,7 +104,7 @@ export default function Progress() {
         {loading ? (
           <p className="text-zinc-500">Loading…</p>
         ) : (
-          <BodyCompositionChart checkins={checkins} measurements={measurements} />
+          <BodyCompositionChart checkins={checkins} measurements={measurements} heightCm={settings?.height_cm ? Number(settings.height_cm) : null} />
         )}
       </section>
 
