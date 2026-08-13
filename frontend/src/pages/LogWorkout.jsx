@@ -458,20 +458,26 @@ export default function LogWorkout() {
                       </select>
                     </div>
                   )}
-                  {lastSetsForEx.length > 0 && (
-                    <p className="mt-1.5 text-xs text-emerald-400/80">
-                      Last time{lastSessionDate ? ` (${format(parseISO(lastSessionDate), 'MMM d')})` : ''}: {lastSetsForEx
-                        .map((s) => `${s.weight_kg ?? '—'}kg×${s.reps ?? '—'}${s.rir != null ? ` @RIR${s.rir}` : ''}`)
-                        .join(', ')}
+                  {lastSetsForEx.length > 0 && lastSessionDate && (
+                    <p className="mt-1.5 text-xs text-zinc-600">
+                      Comparado con la sesión del {format(parseISO(lastSessionDate), 'MMM d')} (columna &quot;Última vez&quot;)
                     </p>
                   )}
                 </div>
                 <div className="space-y-2">
+                  <div className="grid grid-cols-5 gap-1.5 text-[11px] text-zinc-600 sm:gap-2">
+                    <span></span>
+                    <span>Kg</span>
+                    <span>Reps</span>
+                    <span>RIR</span>
+                    <span>Última vez</span>
+                  </div>
                   {Array.from({ length: visibleCount }, (_, i) => i + 1).map((setNum) => {
                     const key = `${ex.id}-${setNum}`
                     const s = sets[key] ?? {}
+                    const last = lastSetsByKey[`${ex.name}-${setNum}`]
                     return (
-                      <div key={key} className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                      <div key={key} className="grid grid-cols-5 gap-1.5 sm:gap-2">
                         <span className="flex items-center text-xs text-zinc-500">Set {setNum}</span>
                         <input
                           type="number"
@@ -494,6 +500,13 @@ export default function LogWorkout() {
                           value={s.rir ?? ''}
                           onChange={(e) => updateSet(key, 'rir', e.target.value)}
                           className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm outline-none focus:border-emerald-500"
+                        />
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={last ? `${last.weight_kg ?? '—'}×${last.reps ?? '—'}${last.rir != null ? ` @${last.rir}` : ''}` : '—'}
+                          className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-sm text-zinc-500 outline-none"
                         />
                       </div>
                     )
