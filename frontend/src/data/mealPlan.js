@@ -34,9 +34,10 @@ const SNACKS = {
 const BREAKFAST_SHARE_OF_MAIN = 0.3
 const LUNCH_SHARE_OF_REMAINING = 0.6
 
-// A shared "topping" choice for oats-based options - pick whichever side you
-// actually have that day (plátano, mantequilla de maní, or almendras). Whichever
-// one is picked is added as a flex item, so it scales together with the oats.
+// A shared set of "topping" choices for oats-based options - pick whichever
+// side(s) you actually have that day (plátano, mantequilla de maní, almendras -
+// you can combine more than one). Each one picked is added as a flex item, so
+// they scale together with the oats.
 export const OATS_TOPPINGS = [
   { key: 'banana', label: 'Plátano', food: 'banana', grams: 70 },
   { key: 'peanut_butter', label: 'Mantequilla de maní', food: 'peanut_butter', grams: 20 },
@@ -198,13 +199,16 @@ function subtractTotals(a, b) {
   return { kcal: a.kcal - b.kcal, protein: a.protein - b.protein, fat: a.fat - b.fat, carbs: a.carbs - b.carbs }
 }
 
-/** Resolves a template's item list, swapping in the chosen topping (if the
- * template has `toppingOptions`) as an extra flex item - defaults to the first
+/** Resolves a template's item list, adding in every chosen topping (if the
+ * template has `toppingOptions`) as extra flex items - you can pick more than
+ * one at a time (e.g. plátano AND mantequilla de maní). Defaults to the first
  * topping so a template with modularity still works with no selection made. */
-function resolveTemplateItems(template, toppingKey) {
+function resolveTemplateItems(template, toppingKeys) {
   if (!template.toppingOptions?.length) return template.items
-  const chosen = template.toppingOptions.find((t) => t.key === toppingKey) ?? template.toppingOptions[0]
-  return [...template.items, { food: chosen.food, grams: chosen.grams, role: 'flex' }]
+  const keys = toppingKeys?.length ? toppingKeys : [template.toppingOptions[0].key]
+  const chosenToppings = template.toppingOptions.filter((t) => keys.includes(t.key))
+  const toppingItems = chosenToppings.map((t) => ({ food: t.food, grams: t.grams, role: 'flex' }))
+  return [...template.items, ...toppingItems]
 }
 
 /**
@@ -224,18 +228,18 @@ export function buildAdaptiveDay(personKey, variantKey, selection, { computeTota
 
   const breakfastTemplate = BREAKFAST_OPTIONS[selection.breakfastIdx] ?? BREAKFAST_OPTIONS[0]
   const breakfastBudget = scaleBudget(mainBudget, BREAKFAST_SHARE_OF_MAIN)
-  const breakfastItems = scaleTemplateToBudget(resolveTemplateItems(breakfastTemplate, selection.breakfastTopping), breakfastBudget)
+  const breakfastItems = scaleTemplateToBudget(resolveTemplateItems(breakfastTemplate, selection.breakfastToppings), breakfastBudget)
   const breakfastTotals = computeTotals(breakfastItems)
 
   const afterBreakfast = subtractTotals(mainBudget, breakfastTotals)
   const lunchTemplate = LUNCH_OPTIONS[selection.lunchIdx] ?? LUNCH_OPTIONS[0]
   const lunchBudget = scaleBudget(afterBreakfast, LUNCH_SHARE_OF_REMAINING)
-  const lunchItems = scaleTemplateToBudget(resolveTemplateItems(lunchTemplate, selection.lunchTopping), lunchBudget)
+  const lunchItems = scaleTemplateToBudget(resolveTemplateItems(lunchTemplate, selection.lunchToppings), lunchBudget)
   const lunchTotals = computeTotals(lunchItems)
 
   const dinnerTemplate = DINNER_OPTIONS[selection.dinnerIdx] ?? DINNER_OPTIONS[0]
   const dinnerBudget = subtractTotals(afterBreakfast, lunchTotals)
-  const dinnerItems = scaleTemplateToBudget(resolveTemplateItems(dinnerTemplate, selection.dinnerTopping), dinnerBudget)
+  const dinnerItems = scaleTemplateToBudget(resolveTemplateItems(dinnerTemplate, selection.dinnerToppings), dinnerBudget)
 
   return [
     { type: 'Desayuno', note: breakfastTemplate.note, items: breakfastItems },

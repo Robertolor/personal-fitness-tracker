@@ -200,13 +200,12 @@ export default function LogWorkout() {
 
   const getActiveName = (ex) => nameOverrides[ex.id] || ex.name
 
-  const setAlternative = (ex, altName) => {
-    const isActive = nameOverrides[ex.id] === altName
-    const newName = isActive ? ex.name : altName
+  const setAlternative = (ex, chosenName) => {
+    const newName = chosenName === ex.name ? ex.name : chosenName
     setNameOverrides((prev) => {
       const next = { ...prev }
-      if (isActive) delete next[ex.id]
-      else next[ex.id] = altName
+      if (newName === ex.name) delete next[ex.id]
+      else next[ex.id] = newName
       return next
     })
     setSets((prev) => {
@@ -445,22 +444,18 @@ export default function LogWorkout() {
                   </p>
                   {ex.notes && <p className="mt-1 text-xs text-zinc-600">{ex.notes}</p>}
                   {ex.alternatives?.length > 0 && (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <div className="mt-2 flex items-center gap-2">
                       <span className="text-xs text-zinc-600">¿Máquina ocupada?</span>
-                      {ex.alternatives.map((alt) => (
-                        <button
-                          key={alt}
-                          type="button"
-                          onClick={() => setAlternative(ex, alt)}
-                          className={`rounded-full border px-2 py-0.5 text-xs transition ${
-                            nameOverrides[ex.id] === alt
-                              ? 'border-emerald-500 bg-emerald-600/20 text-emerald-300'
-                              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
-                          }`}
-                        >
-                          {alt}
-                        </button>
-                      ))}
+                      <select
+                        value={getActiveName(ex)}
+                        onChange={(e) => setAlternative(ex, e.target.value)}
+                        className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-emerald-500"
+                      >
+                        <option value={ex.name}>{ex.name} (por defecto)</option>
+                        {ex.alternatives.map((alt) => (
+                          <option key={alt} value={alt}>{alt}</option>
+                        ))}
+                      </select>
                     </div>
                   )}
                   {lastSetsForEx.length > 0 && (

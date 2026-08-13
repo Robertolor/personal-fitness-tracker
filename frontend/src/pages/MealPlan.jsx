@@ -20,17 +20,25 @@ export default function MealPlan() {
   const [person, setPerson] = useState('roberto')
   const [variant, setVariant] = useState('maintain')
   const [showExtras, setShowExtras] = useState(null)
-  // Which option is currently picked for each meal slot, plus which topping
-  // (for options with `toppingOptions`, e.g. oats: plátano / maní / almendras).
-  // Changing any of these reflows the budget for whatever comes after it in the day.
+  // Which option is currently picked for each meal slot, plus which topping(s)
+  // (for options with `toppingOptions`, e.g. oats: plátano / maní / almendras -
+  // you can pick more than one at once). Changing any of these reflows the
+  // budget for whatever comes after it in the day.
   const [selection, setSelection] = useState({
     breakfastIdx: 0,
     lunchIdx: 0,
     dinnerIdx: 0,
-    breakfastTopping: 'banana',
-    lunchTopping: 'banana',
-    dinnerTopping: 'banana',
+    breakfastToppings: ['banana'],
+    lunchToppings: ['banana'],
+    dinnerToppings: ['banana'],
   })
+
+  const toggleTopping = (field, key) =>
+    setSelection((s) => {
+      const current = s[field] ?? []
+      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
+      return { ...s, [field]: next }
+    })
 
   const clampedDay = dayNumberFromStart(startDate)
   const effectiveVariant = person === 'esposa' ? 'fixed' : variant
@@ -124,8 +132,8 @@ export default function MealPlan() {
         previews={breakfastPreviews}
         selectedIdx={selection.breakfastIdx}
         onSelect={(i) => setSelection((s) => ({ ...s, breakfastIdx: i }))}
-        topping={selection.breakfastTopping}
-        onSelectTopping={(key) => setSelection((s) => ({ ...s, breakfastTopping: key }))}
+        toppings={selection.breakfastToppings}
+        onToggleTopping={(key) => toggleTopping('breakfastToppings', key)}
       />
       <MealSlot
         title="Almuerzo"
@@ -133,8 +141,8 @@ export default function MealPlan() {
         previews={lunchPreviews}
         selectedIdx={selection.lunchIdx}
         onSelect={(i) => setSelection((s) => ({ ...s, lunchIdx: i }))}
-        topping={selection.lunchTopping}
-        onSelectTopping={(key) => setSelection((s) => ({ ...s, lunchTopping: key }))}
+        toppings={selection.lunchToppings}
+        onToggleTopping={(key) => toggleTopping('lunchToppings', key)}
       />
 
       <MealCard meal={meals[2]} />
@@ -145,8 +153,8 @@ export default function MealPlan() {
         previews={dinnerPreviews}
         selectedIdx={selection.dinnerIdx}
         onSelect={(i) => setSelection((s) => ({ ...s, dinnerIdx: i }))}
-        topping={selection.dinnerTopping}
-        onSelectTopping={(key) => setSelection((s) => ({ ...s, dinnerTopping: key }))}
+        toppings={selection.dinnerToppings}
+        onToggleTopping={(key) => toggleTopping('dinnerToppings', key)}
         footnote="La cena se ajusta automáticamente a lo que quede del día - por eso no siempre pesa igual."
       />
 
@@ -210,7 +218,7 @@ function previewSlot(person, variant, hypotheticalSelection, mealIndex) {
   return { items: meal.items, totals: round(computeTotals(meal.items)) }
 }
 
-function MealSlot({ title, options, previews, selectedIdx, onSelect, topping, onSelectTopping, footnote }) {
+function MealSlot({ title, options, previews, selectedIdx, onSelect, toppings, onToggleTopping, footnote }) {
   const gridCols = options.length >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'
   return (
     <section className="space-y-2">
@@ -252,22 +260,26 @@ function MealSlot({ title, options, previews, selectedIdx, onSelect, topping, on
 
               {active && opt.toppingOptions && (
                 <div className="mt-3 w-full border-t border-zinc-800 pt-2">
-                  <p className="mb-1 text-[11px] text-zinc-600">Acompañamiento:</p>
+                  <p className="mb-1 text-[11px] text-zinc-600">Acompañamiento (puedes elegir más de uno):</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {opt.toppingOptions.map((t) => (
-                      <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => onSelectTopping(t.key)}
-                        className={`rounded-full border px-2 py-0.5 text-xs transition ${
-                          topping === t.key
-                            ? 'border-emerald-500 bg-emerald-600/20 text-emerald-300'
-                            : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
+                    {opt.toppingOptions.map((t) => {
+                      const checked = toppings?.includes(t.key)
+                      return (
+                        <button
+                          key={t.key}
+                          type="button"
+                          onClick={() => onToggleTopping(t.key)}
+                          className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition ${
+                            checked
+                              ? 'border-emerald-500 bg-emerald-600/20 text-emerald-300'
+                              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+                          }`}
+                        >
+                          {checked && <Check size={11} className="shrink-0" />}
+                          {t.label}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               )}
