@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Check, Loader2, Minus, Plus } from 'lucide-react'
+import { Loader2, Minus, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import { supabase } from '../lib/supabase'
+import { useSaveState } from '../lib/useSaveState'
+import SaveButton from '../components/SaveButton'
 import {
   getWorkoutDayForDate,
   getWeekNumber,
@@ -55,8 +58,9 @@ export default function LogWorkout() {
   const [nameOverrides, setNameOverrides] = useState({})
   const [loading, setLoading] = useState(true)
   const [initLoading, setInitLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState('')
+  const progressSave = useSaveState()
+  const completeSave = useSaveState()
+  const showToast = useToast()
 
   const sessionDateObj = parseISO(sessionDate)
   const calendarSuggestion = calendarRoutine ?? getWorkoutDayForDate(sessionDateObj, startDate, schedule)
@@ -251,7 +255,7 @@ export default function LogWorkout() {
     if (lastSet?.id) {
       const { error } = await supabase.from('workout_sets').delete().eq('id', lastSet.id)
       if (error) {
-        setMessage(error.message ?? 'Failed to remove set')
+        showToast(error.message ?? 'No se pudo eliminar la serie', 'error')
         return
       }
     }
@@ -266,63 +270,64 @@ export default function LogWorkout() {
 
   const saveWorkout = async (markComplete = false) => {
     if (!user || !routine || !selectedRoutine) return
-    setSaving(true)
-    setMessage('')
+    const state = markComplete ? completeSave : progressSave
 
     try {
-      let sessionId = session?.id
-      if (!sessionId) {
-        const { data: newSession, error } = await supabase
-          .from('workout_sessions')
-          .insert({
-            user_id: user.id,
-            routine_id: routine.id,
-            routine_name: selectedRoutine,
-            session_date: sessionDate,
-            week_number: weekNum,
-            completed_at: markComplete ? new Date().toISOString() : null,
-          })
-          .select('id')
-          .single()
-        if (error) throw error
-        sessionId = newSession.id
-      } else if (markComplete) {
-        await supabase
-          .from('workout_sessions')
-          .update({ completed_at: new Date().toISOString() })
-          .eq('id', sessionId)
-      }
-
-      const toUpsert = Object.values(sets).filter((s) => s.weight_kg || s.reps)
-      for (const s of toUpsert) {
-        const row = {
-          session_id: sessionId,
-          exercise_id: s.exercise_id,
-          exercise_name: s.exercise_name,
-          set_number: s.set_number,
-          weight_kg: s.weight_kg ? Number(s.weight_kg) : null,
-          reps: s.reps ? Number(s.reps) : null,
-          rir: s.rir !== '' && s.rir != null ? Number(s.rir) : null,
-        }
-        if (s.id) {
-          await supabase.from('workout_sets').update(row).eq('id', s.id)
-        } else {
-          await supabase.from('workout_sets').insert(row)
-        }
-      }
-
-      await supabase.from('daily_checkins').upsert(
-        { user_id: user.id, checkin_date: sessionDate, workout_completed: markComplete },
-        { onConflict: 'user_id,checkin_date' }
-      )
-
-      setMessage(markComplete ? 'Workout completed!' : 'Progress saved.')
-      await loadWorkout()
+      await state.run(() => persistWorkout(markComplete))
+      showToast(markComplete ? 'Entrenamiento completado' : 'Progreso guardado')
     } catch (err) {
-      setMessage(err.message ?? 'Failed to save')
-    } finally {
-      setSaving(false)
+      showToast(err.message ?? 'No se pudo guardar', 'error')
     }
+  }
+
+  const persistWorkout = async (markComplete) => {
+    let sessionId = session?.id
+    if (!sessionId) {
+      const { data: newSession, error } = await supabase
+        .from('workout_sessions')
+        .insert({
+          user_id: user.id,
+          routine_id: routine.id,
+          routine_name: selectedRoutine,
+          session_date: sessionDate,
+          week_number: weekNum,
+          completed_at: markComplete ? new Date().toISOString() : null,
+        })
+        .select('id')
+        .single()
+      if (error) throw error
+      sessionId = newSession.id
+    } else if (markComplete) {
+      await supabase
+        .from('workout_sessions')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('id', sessionId)
+    }
+
+    const toUpsert = Object.values(sets).filter((s) => s.weight_kg || s.reps)
+    for (const s of toUpsert) {
+      const row = {
+        session_id: sessionId,
+        exercise_id: s.exercise_id,
+        exercise_name: s.exercise_name,
+        set_number: s.set_number,
+        weight_kg: s.weight_kg ? Number(s.weight_kg) : null,
+        reps: s.reps ? Number(s.reps) : null,
+        rir: s.rir !== '' && s.rir != null ? Number(s.rir) : null,
+      }
+      if (s.id) {
+        await supabase.from('workout_sets').update(row).eq('id', s.id)
+      } else {
+        await supabase.from('workout_sets').insert(row)
+      }
+    }
+
+    await supabase.from('daily_checkins').upsert(
+      { user_id: user.id, checkin_date: sessionDate, workout_completed: markComplete },
+      { onConflict: 'user_id,checkin_date' }
+    )
+
+    await loadWorkout()
   }
 
   if (initLoading || (loading && !routine)) {
@@ -540,24 +545,24 @@ export default function LogWorkout() {
 
       <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-zinc-800 bg-zinc-950/95 px-4 py-3 backdrop-blur md:bottom-0">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
-          {message && <p className="w-full text-sm text-emerald-400">{message}</p>}
-          <button
-            type="button"
-            disabled={saving || loading}
+          <SaveButton
+            status={progressSave.status}
+            disabled={loading || completeSave.saving}
             onClick={() => saveWorkout(false)}
-            className="flex-1 rounded-lg border border-zinc-700 px-5 py-2.5 text-sm font-medium hover:bg-zinc-800 disabled:opacity-50 sm:flex-none"
+            variant="outline"
+            className="flex-1 px-5 py-2.5 sm:flex-none"
           >
             Save progress
-          </button>
-          <button
-            type="button"
-            disabled={saving || loading}
+          </SaveButton>
+          <SaveButton
+            status={completeSave.status}
+            disabled={loading || progressSave.saving}
             onClick={() => saveWorkout(true)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50 sm:flex-none"
+            savedLabel="Completado"
+            className="flex-1 px-5 py-2.5 sm:flex-none"
           >
-            <Check size={16} />
             Complete workout
-          </button>
+          </SaveButton>
         </div>
       </div>
     </div>

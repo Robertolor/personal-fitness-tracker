@@ -12,7 +12,10 @@ export const FOODS = {
   white_rice_cooked: { label: 'Arroz blanco (cocido)', kcal: 130, protein: 2.7, fat: 0.3, carbs: 28 },
   quinoa_cooked: { label: 'Quinoa (cocida)', kcal: 120, protein: 4.4, fat: 1.9, carbs: 21 },
   oats_dry: { label: 'Avena (cruda)', kcal: 389, protein: 16.9, fat: 6.9, carbs: 66 },
-  greek_yogurt_danone_0: { label: 'Yogur griego Danone 0%', kcal: 57, protein: 10, fat: 0.2, carbs: 3.6 },
+  // What's actually on the Consum shelf is the regular Danone Griego Natural
+  // (not the 0%/high-protein one) - 7g fat and only 3.6g protein per 100g, per
+  // the real pack label, not the old (much leaner) placeholder values.
+  greek_yogurt_danone_7: { label: 'Yogur griego Danone natural (7% grasa)', kcal: 96, protein: 3.6, fat: 7, carbs: 4.6 },
   queso_fresco_batido_0: { label: 'Queso fresco batido 0%', kcal: 65, protein: 11, fat: 0.2, carbs: 4 },
   whey_protein_powder: { label: 'Proteína en polvo (whey)', kcal: 400, protein: 80, fat: 7, carbs: 8 },
   olive_oil: { label: 'Aceite de oliva', kcal: 884, protein: 0, fat: 100, carbs: 0 },

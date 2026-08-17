@@ -19,11 +19,11 @@ export const PEOPLE = {
 // are subtracted from the day target before the 3 adaptive meals split the rest.
 const SNACKS = {
   roberto: {
-    maintain: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 25 }],
-    reduced: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 15 }],
+    maintain: [{ food: 'greek_yogurt_danone_7', grams: 150 }, { food: 'almonds', grams: 25 }],
+    reduced: [{ food: 'greek_yogurt_danone_7', grams: 150 }, { food: 'almonds', grams: 15 }],
   },
   esposa: {
-    fixed: [{ food: 'greek_yogurt_danone_0', grams: 150 }, { food: 'almonds', grams: 10 }],
+    fixed: [{ food: 'greek_yogurt_danone_7', grams: 150 }, { food: 'almonds', grams: 10 }],
   },
 }
 
@@ -55,7 +55,7 @@ export const BREAKFAST_OPTIONS = [
     note: 'Prepara la noche anterior: avena + yogur + whey en la nevera. Elige el acompañamiento de abajo.',
     items: [
       { food: 'whey_protein_powder', grams: 30, role: 'protein' },
-      { food: 'greek_yogurt_danone_0', grams: 150, role: 'protein' },
+      { food: 'greek_yogurt_danone_7', grams: 150, role: 'protein' },
       { food: 'oats_dry', grams: 45, role: 'flex' },
     ],
     toppingOptions: OATS_TOPPINGS,
@@ -263,7 +263,7 @@ export const SHOPPING_LIST_WEEKLY = [
   { item: 'Atún al natural (lata)', amount: '~4-5 latas (si eliges atún en cena)' },
   { item: 'Huevos', amount: '~14-18 (según opciones elegidas)' },
   { item: 'Claras de huevo (cartón o separadas)', amount: '~1 L (para las opciones con clara)' },
-  { item: 'Yogur griego Danone 0%', amount: '~14 unidades de 250 g' },
+  { item: 'Yogur griego Danone natural (7% grasa)', amount: '~14 unidades de 250 g' },
   { item: 'Queso fresco batido 0%', amount: '~4-5 tarrinas (si eliges esas opciones)' },
   { item: 'Proteína en polvo (whey)', amount: '~350 g (bote)' },
   { item: 'Arroz blanco', amount: '~500 g en crudo' },

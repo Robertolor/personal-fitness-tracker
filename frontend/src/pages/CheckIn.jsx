@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import { supabase } from '../lib/supabase'
 import { formatDateISO } from '../lib/schedule'
+import { useSaveState } from '../lib/useSaveState'
 import { ScaleStepper } from '../components/NumberStepper'
+import SaveButton from '../components/SaveButton'
 import { navyBodyFatPct } from '../lib/bodyComp'
 
 // Wellness/adherence scales default to null (unset), not a fake "3" - saving should
@@ -46,8 +49,10 @@ export default function CheckIn() {
   const [offPlan, setOffPlan] = useState(false)
   const [showExtras, setShowExtras] = useState(false)
   const [tab, setTab] = useState('daily')
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState('')
+  const weightSave = useSaveState()
+  const checkinSave = useSaveState()
+  const measurementSave = useSaveState()
+  const showToast = useToast()
 
   useEffect(() => {
     if (!user) return
@@ -88,80 +93,68 @@ export default function CheckIn() {
 
   // Weight is the one thing worth logging almost every day - its own save action
   // means you're never forced to also touch sleep/energy/nutrition/etc. to save it.
-  const saveWeightOnly = async () => {
+  const saveWeightOnly = () => {
     if (checkin.weight_kg === '') return
-    setSaving(true)
-    setMessage('')
-    try {
-      const row = { user_id: user.id, checkin_date: todayISO, weight_kg: Number(checkin.weight_kg) }
-      const { error } = await supabase.from('daily_checkins').upsert(row, { onConflict: 'user_id,checkin_date' })
-      if (error) throw error
-      setMessage('Weight saved.')
-    } catch (err) {
-      setMessage(err.message)
-    } finally {
-      setSaving(false)
-    }
+    weightSave
+      .run(async () => {
+        const row = { user_id: user.id, checkin_date: todayISO, weight_kg: Number(checkin.weight_kg) }
+        const { error } = await supabase.from('daily_checkins').upsert(row, { onConflict: 'user_id,checkin_date' })
+        if (error) throw error
+      })
+      .then(() => showToast('Peso guardado'))
+      .catch((err) => showToast(err.message ?? 'No se pudo guardar el peso', 'error'))
   }
 
-  const saveCheckin = async () => {
-    setSaving(true)
-    setMessage('')
-    try {
-      const row = {
-        user_id: user.id,
-        checkin_date: todayISO,
-        sleep: checkin.sleep,
-        energy: checkin.energy,
-        hunger: checkin.hunger,
-        stress: checkin.stress,
-        muscle_fatigue: checkin.muscle_fatigue,
-        nutrition_adherence: checkin.nutrition_adherence,
-        workout_completed: checkin.workout_completed,
-        swimming_completed: checkin.swimming_completed,
-        notes: checkin.notes || null,
-        weight_kg: checkin.weight_kg !== '' ? Number(checkin.weight_kg) : null,
-        body_fat_pct: checkin.body_fat_pct !== '' ? Number(checkin.body_fat_pct) : null,
-        steps: checkin.steps !== '' ? Number(checkin.steps) : null,
-        calories_consumed: offPlan && checkin.calories_consumed !== '' ? Number(checkin.calories_consumed) : null,
-        protein_g: offPlan && checkin.protein_g !== '' ? Number(checkin.protein_g) : null,
-      }
-      const { error } = await supabase.from('daily_checkins').upsert(row, { onConflict: 'user_id,checkin_date' })
-      if (error) throw error
-      setMessage('Check-in saved.')
-    } catch (err) {
-      setMessage(err.message)
-    } finally {
-      setSaving(false)
-    }
+  const saveCheckin = () => {
+    checkinSave
+      .run(async () => {
+        const row = {
+          user_id: user.id,
+          checkin_date: todayISO,
+          sleep: checkin.sleep,
+          energy: checkin.energy,
+          hunger: checkin.hunger,
+          stress: checkin.stress,
+          muscle_fatigue: checkin.muscle_fatigue,
+          nutrition_adherence: checkin.nutrition_adherence,
+          workout_completed: checkin.workout_completed,
+          swimming_completed: checkin.swimming_completed,
+          notes: checkin.notes || null,
+          weight_kg: checkin.weight_kg !== '' ? Number(checkin.weight_kg) : null,
+          body_fat_pct: checkin.body_fat_pct !== '' ? Number(checkin.body_fat_pct) : null,
+          steps: checkin.steps !== '' ? Number(checkin.steps) : null,
+          calories_consumed: offPlan && checkin.calories_consumed !== '' ? Number(checkin.calories_consumed) : null,
+          protein_g: offPlan && checkin.protein_g !== '' ? Number(checkin.protein_g) : null,
+        }
+        const { error } = await supabase.from('daily_checkins').upsert(row, { onConflict: 'user_id,checkin_date' })
+        if (error) throw error
+      })
+      .then(() => showToast('Check-in guardado'))
+      .catch((err) => showToast(err.message ?? 'No se pudo guardar el check-in', 'error'))
   }
 
-  const saveMeasurement = async () => {
-    setSaving(true)
-    setMessage('')
-    try {
-      const num = (v) => (v !== '' && v != null ? Number(v) : null)
-      const row = {
-        user_id: user.id,
-        measured_date: todayISO,
-        waist_cm: num(measurement.waist_cm),
-        chest_cm: num(measurement.chest_cm),
-        hips_cm: num(measurement.hips_cm),
-        left_arm_cm: num(measurement.left_arm_cm),
-        right_arm_cm: num(measurement.right_arm_cm),
-        left_thigh_cm: num(measurement.left_thigh_cm),
-        right_thigh_cm: num(measurement.right_thigh_cm),
-        neck_cm: num(measurement.neck_cm),
-        notes: measurement.notes || null,
-      }
-      const { error } = await supabase.from('body_measurements').upsert(row, { onConflict: 'user_id,measured_date' })
-      if (error) throw error
-      setMessage('Measurements saved.')
-    } catch (err) {
-      setMessage(err.message)
-    } finally {
-      setSaving(false)
-    }
+  const saveMeasurement = () => {
+    measurementSave
+      .run(async () => {
+        const num = (v) => (v !== '' && v != null ? Number(v) : null)
+        const row = {
+          user_id: user.id,
+          measured_date: todayISO,
+          waist_cm: num(measurement.waist_cm),
+          chest_cm: num(measurement.chest_cm),
+          hips_cm: num(measurement.hips_cm),
+          left_arm_cm: num(measurement.left_arm_cm),
+          right_arm_cm: num(measurement.right_arm_cm),
+          left_thigh_cm: num(measurement.left_thigh_cm),
+          right_thigh_cm: num(measurement.right_thigh_cm),
+          neck_cm: num(measurement.neck_cm),
+          notes: measurement.notes || null,
+        }
+        const { error } = await supabase.from('body_measurements').upsert(row, { onConflict: 'user_id,measured_date' })
+        if (error) throw error
+      })
+      .then(() => showToast('Medidas guardadas'))
+      .catch((err) => showToast(err.message ?? 'No se pudieron guardar las medidas', 'error'))
   }
 
   const calorieTarget = settings?.calorie_target ?? 1900
@@ -208,23 +201,23 @@ export default function CheckIn() {
         <div className="space-y-5">
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
             <label className="mb-1 block text-xs text-zinc-500">Weight (kg)</label>
-            <div className="flex gap-2">
+            <div className="flex min-w-0 gap-2">
               <input
                 type="number"
                 step="0.1"
                 value={checkin.weight_kg}
                 onChange={(e) => setCheckin({ ...checkin, weight_kg: e.target.value })}
                 placeholder="e.g. 79.2"
-                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-lg outline-none focus:border-emerald-500"
+                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-lg outline-none focus:border-emerald-500"
               />
-              <button
-                type="button"
-                disabled={saving || checkin.weight_kg === ''}
+              <SaveButton
+                status={weightSave.status}
+                disabled={checkin.weight_kg === ''}
                 onClick={saveWeightOnly}
-                className="rounded-lg bg-emerald-600 px-5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50"
+                className="shrink-0 px-5 py-2"
               >
                 Save
-              </button>
+              </SaveButton>
             </div>
             <p className="mt-2 text-xs text-zinc-500">
               This is the only thing worth logging daily. Everything below is optional -
@@ -288,9 +281,9 @@ export default function CheckIn() {
             </div>
           </details>
 
-          <button type="button" disabled={saving} onClick={saveCheckin} className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50">
+          <SaveButton status={checkinSave.status} onClick={saveCheckin} className="w-full py-2.5">
             Save check-in
-          </button>
+          </SaveButton>
         </div>
       ) : (
         <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
@@ -325,13 +318,11 @@ export default function CheckIn() {
 
           <Field label="Notes" value={measurement.notes} onChange={(v) => setMeasurement({ ...measurement, notes: v })} multiline />
 
-          <button type="button" disabled={saving} onClick={saveMeasurement} className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50">
+          <SaveButton status={measurementSave.status} onClick={saveMeasurement} className="w-full py-2.5">
             Save measurements
-          </button>
+          </SaveButton>
         </div>
       )}
-
-      {message && <p className="text-sm text-emerald-400">{message}</p>}
     </div>
   )
 }
